@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  terraform-generator:
+    build: .
+    container_name: darch-terraform-generator
+    volumes:
+      - ./src:/app/src
+      - ./test-terraform.sh:/app/test-terraform.sh
+    working_dir: /app
+    command: /bin/bash
+    stdin_open: true
+    tty: true
+    environment:
+      - NODE_ENV=development

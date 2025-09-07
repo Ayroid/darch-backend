@@ -8,9 +8,10 @@
   "main": "index.js",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/src/index.js",
+    "start": "node dist/index.js",
     "dev": "nodemon",
-    "test": "node dist/src/terraform-generator.js",
+    "cli": "npm run build && node dist/index.js --cli",
+    "test": "node dist/terraform-generator.js",
     "docker:build": "docker build -t terraform-generator .",
     "docker:run": "docker run --rm terraform-generator",
     "docker:test": "npm run docker:build && npm run docker:run"

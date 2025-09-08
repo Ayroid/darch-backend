@@ -33,6 +33,19 @@ router.post('/terraform/plan',
 );
 
 // =====================================
+// ARCHITECTURE DATA FORMAT ENDPOINTS
+// =====================================
+
+// Convert legacy format to clean format
+router.post('/convert/to-clean',
+  ValidationMiddleware.validateArchitectureData,
+  TerraformController.convertToCleanFormat
+);
+
+// Get clean format example
+router.get('/examples/clean-format', TerraformController.getCleanFormatExample);
+
+// =====================================
 // MODULE MANAGEMENT ENDPOINTS
 // =====================================
 

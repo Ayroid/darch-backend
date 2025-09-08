@@ -19,12 +19,24 @@ A robust TypeScript backend for generating enterprise-grade modular Terraform co
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [API Documentation](#api-documentation)
-- [Modular Architecture](#modular-architecture)
+- [Documentation](#documentation)
 - [Configuration](#configuration)
 - [Development](#development)
 - [Testing](#testing)
 - [Deployment](#deployment)
 - [Contributing](#contributing)
+
+## 📚 Documentation
+
+Complete documentation is available in the [`docs/`](./docs/) folder:
+
+- **[📚 Documentation Index](./docs/README.md)** - Complete documentation overview
+- **[🔌 API Reference](./docs/API.md)** - Detailed API documentation
+- **[🏗️ Architecture Guide](./docs/ARCHITECTURE.md)** - System architecture overview
+- **[⚙️ Development Guide](./docs/DEVELOPMENT.md)** - Development setup and workflow
+- **[🚀 Deployment Guide](./docs/DEPLOYMENT.md)** - Production deployment instructions
+
+For quick API reference, see the sections below, or visit the [complete API documentation](./docs/API.md).
 
 ## 🛠 Installation
 
@@ -432,291 +444,72 @@ Get the content of a specific Terraform file.
 
 Download a Terraform file as an attachment.
 
-## 🏗 Modular Architecture
+For complete API documentation with detailed examples, see [API Reference](./docs/API.md).
 
-The backend features a comprehensive modular Terraform architecture:
+## 🏗 Architecture Overview
 
-```
-src/
-├── controllers/         # Request handlers
-│   ├── HealthController.ts
-│   └── TerraformController.ts  # Unified controller for all Terraform operations
-├── services/            # Business logic
-│   ├── ModuleRegistryService.ts      # Module discovery and validation
-│   ├── ArchitectureParserService.ts  # Architecture parsing and validation
-│   ├── ModuleMapperService.ts        # Architecture to module mapping
-│   ├── ModularTerraformGeneratorService.ts  # Terraform generation
-│   ├── FileService.ts                # File management
-│   └── CLIService.ts                 # CLI interface
-├── terraform-modules/   # Module registry
-│   ├── networking/      # VPC, subnet, gateway modules
-│   ├── compute/         # EC2, auto-scaling modules
-│   ├── security/        # Security group, IAM modules
-│   └── storage/         # S3, EBS modules
-├── models/              # Data structures and interfaces
-│   ├── Architecture.ts  # Architecture and validation interfaces
-│   └── Response.ts      # API response interfaces
-├── routes/              # API endpoints
-│   ├── index.ts
-│   ├── healthRoutes.ts
-│   └── apiRoutes.ts
-├── middleware/          # Express middleware
-│   ├── ErrorMiddleware.ts
-│   ├── LoggingMiddleware.ts
-│   └── ValidationMiddleware.ts
-├── utils/               # Utility functions
-│   ├── ConfigUtils.ts
-│   └── ValidationUtils.ts
-└── views/               # Response formatting
-    └── ResponseView.ts  # Standardized API responses
+The Darch Backend features a modular, service-oriented architecture with comprehensive Terraform module support. Key components include:
+
+- **TerraformController**: Unified API controller
+- **ModuleRegistryService**: Terraform module management
+- **ArchitectureParserService**: Architecture validation
+- **ModularTerraformGeneratorService**: Code generation
+
+For detailed architecture documentation, see [Architecture Guide](./docs/ARCHITECTURE.md) and [Modular Architecture](./docs/MODULAR_ARCHITECTURE.md).
+
+## 🧪 Testing
+
+### Quick Testing
+```bash
+# Start server
+npm start
+
+# Health check
+curl http://localhost:5000/health
+
+# Run comprehensive tests
+chmod +x test-modular.sh
+./test-modular.sh
 ```
 
-### 🏗️ Terraform Module Registry
-
-The system includes a comprehensive module registry:
-
-#### Networking Modules
-- **VPC**: Virtual Private Cloud with DNS configuration
-- **Subnet**: Public/private subnets with availability zone support
-- **Internet Gateway**: Internet connectivity for public subnets
-- **NAT Gateway**: Outbound internet for private subnets
-
-#### Compute Modules
-- **EC2**: Elastic Compute instances with security group integration
-- **Auto Scaling**: Auto scaling groups with launch templates
-- **Load Balancer**: Application and network load balancers
-
-#### Security Modules
-- **Security Group**: Firewall rules with ingress/egress configuration
-- **IAM Role**: Identity and access management
-- **Key Pair**: SSH key management
-
-#### Storage Modules
-- **S3**: Object storage with bucket policies
-- **EBS**: Elastic block storage volumes
-
-### Key Components
-
-- **TerraformController**: Unified controller handling all Terraform operations
-- **ModuleRegistryService**: Manages the library of Terraform modules
-- **ArchitectureParserService**: Parses and validates architecture designs
-- **ModuleMapperService**: Maps architecture to appropriate modules with dependency resolution
-- **ModularTerraformGeneratorService**: Generates modular Terraform configurations
-- **ValidationMiddleware**: Comprehensive input validation and security checks
-- **ResponseView**: Standardized API response formatting
+For complete testing documentation, see [Testing Guide](./docs/TESTING.md).
 
 ## ⚙️ Configuration
 
 ### Environment Variables
-
-Create a `.env` file in the root directory:
-
 ```env
 NODE_ENV=development
 PORT=5000
 CORS_ORIGIN=*
 ```
 
-### Available Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `NODE_ENV` | `development` | Application environment |
-| `PORT` | `5000` | Server port |
-| `CORS_ORIGIN` | `*` | CORS allowed origins |
-
-## 🛠 Development
-
-### Project Scripts
-
-```bash
-# Build TypeScript
-npm run build
-
-# Start production server
-npm start
-
-# Start development server with hot reload
-npm run dev
-
-# Run CLI mode
-npm run cli
-
-# Build and run Docker container
-npm run docker:build
-npm run docker:run
-npm run docker:test
-```
-
-### Code Style
-
-The project uses TypeScript with strict type checking. Follow these conventions:
-
-- Use PascalCase for classes and interfaces
-- Use camelCase for variables and functions
-- Use kebab-case for file names (except TypeScript files)
-- Add JSDoc comments for public methods
-- Export interfaces and types from model files
-
-### Adding New Endpoints
-
-1. Define the interface in `src/models/`
-2. Create controller method in `src/controllers/`
-3. Add route in `src/routes/`
-4. Add validation in `src/middleware/ValidationMiddleware.ts`
-5. Update documentation
-
-## 🧪 Testing
-
-### Manual Testing
-
-Test the health endpoint:
-```bash
-curl http://localhost:5000/health
-```
-
-Test module listing:
-```bash
-curl http://localhost:5000/api/modules
-```
-
-Test architecture validation:
-```bash
-curl -X POST http://localhost:5000/api/validate/architecture \
-  -H "Content-Type: application/json" \
-  -d '{
-    "architectureData": {
-      "metadata": {
-        "name": "test-infrastructure",
-        "provider": "aws",
-        "region": "us-east-1"
-      },
-      "nodes": [
-        {
-          "id": "vpc-1",
-          "name": "Test VPC",
-          "resourceType": "vpc",
-          "configuration": {
-            "cidr_block": "10.0.0.0/16"
-          }
-        }
-      ],
-      "connections": []
-    }
-  }'
-```
-
-Test Terraform generation:
-```bash
-curl -X POST http://localhost:5000/api/generate-terraform \
-  -H "Content-Type: application/json" \
-  -d '{
-    "architectureData": {
-      "metadata": {
-        "name": "production-infra",
-        "provider": "aws",
-        "region": "us-east-1"
-      },
-      "nodes": [
-        {
-          "id": "vpc-1",
-          "name": "Main VPC",
-          "resourceType": "vpc",
-          "configuration": {
-            "cidr_block": "10.0.0.0/16",
-            "enable_dns_hostnames": true
-          }
-        }
-      ],
-      "connections": []
-    },
-    "projectName": "test-project"
-  }'
-```
-
-### Automated Testing
-
-Run the comprehensive test suite:
-```bash
-chmod +x test-modular.sh
-./test-modular.sh
-```
-
-### Docker Testing
-
-```bash
-# Build and test in container
-npm run docker:test
-
-# Or manually
-docker build -t terraform-generator .
-docker run --rm terraform-generator
-```
-
-### Terraform Validation
-
-Use the included validation script:
-```bash
-chmod +x validate-terraform-syntax.sh
-./validate-terraform-syntax.sh
-```
+For detailed configuration options, see [Development Guide](./docs/DEVELOPMENT.md).
 
 ## 🚀 Deployment
 
-### Production Build
-
+### Quick Deployment
 ```bash
+# Production build
 npm run build
 npm start
-```
 
-### Docker Deployment
-
-```bash
+# Docker deployment
 docker build -t darch-backend .
-docker run -p 5000:5000 -e NODE_ENV=production darch-backend
+docker run -p 5000:5000 darch-backend
 ```
 
-### Environment Setup
-
-For production deployment:
-
-1. Set `NODE_ENV=production`
-2. Configure proper CORS origins
-3. Set up process management (PM2, systemd)
-4. Configure reverse proxy (nginx)
-5. Set up SSL certificates
-
-## 🔧 Troubleshooting
-
-### Common Issues
-
-**Port already in use:**
-```bash
-# Kill process on port 5000
-lsof -ti:5000 | xargs kill -9
-```
-
-**TypeScript compilation errors:**
-```bash
-# Clean build
-rm -rf dist/
-npm run build
-```
-
-**Template files not found:**
-- Ensure template files are in `src/data/infra-templates/aws/`
-- Check file permissions
-- Verify JSON syntax in template files
-
-### Debug Mode
-
-Enable detailed logging:
-```bash
-NODE_ENV=development npm start
-```
+For complete deployment instructions, see [Deployment Guide](./docs/DEPLOYMENT.md).
 
 ## 🤝 Contributing
+
+We welcome contributions! Please see our [Contributing Guidelines](./docs/CONTRIBUTING.md) for detailed information on:
+
+- Code style guidelines
+- Pull request process
+- Testing requirements
+- Documentation standards
+
+### Quick Contributing Steps
 
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feature/amazing-feature`
@@ -740,9 +533,11 @@ This project is licensed under the ISC License.
 
 For support and questions:
 
-- Create an issue on GitHub
-- Check the troubleshooting section
-- Review the API documentation
+- **General Issues**: Create an issue on GitHub
+- **Documentation**: Check the [docs folder](./docs/) for comprehensive guides
+- **Security Issues**: See our [Security Policy](./docs/SECURITY.md)
+- **API Questions**: Review the [API documentation](./docs/API.md)
+- **Troubleshooting**: Check the [Development Guide](./docs/DEVELOPMENT.md#troubleshooting)
 
 ---
 

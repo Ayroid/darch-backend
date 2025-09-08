@@ -7,7 +7,7 @@ export class ErrorMiddleware {
    */
   static handle(err: any, req: Request, res: Response, next: NextFunction): void {
     console.error('Unhandled error:', err);
-    
+
     const errorResponse = ResponseView.error('Internal server error');
     res.status(500).json(errorResponse);
   }

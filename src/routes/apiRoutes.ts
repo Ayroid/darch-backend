@@ -4,26 +4,67 @@ import { ValidationMiddleware } from '../middleware/ValidationMiddleware.js';
 
 const router = Router();
 
-// Generate Terraform from raw JSON config (for testing and legacy support)
-router.post('/generate-terraform-raw', TerraformController.generateTerraformFromRawConfig);
+// =====================================
+// TERRAFORM GENERATION ENDPOINTS
+// =====================================
 
-// Generate Terraform from JSON endpoint
-router.post('/generate-terraform', 
+// Generate Terraform from architecture data
+router.post('/generate-terraform',
   ValidationMiddleware.validateArchitectureData,
-  TerraformController.generateTerraform
+  TerraformController.generateModularTerraform
 );
+
+// Validate architecture design
+router.post('/validate/architecture',
+  ValidationMiddleware.validateArchitectureData,
+  TerraformController.validateArchitecture
+);
+
+// Validate resource dependencies
+router.post('/validate/dependencies',
+  ValidationMiddleware.validateArchitectureData,
+  TerraformController.validateDependencies
+);
+
+// Generate Terraform plan (dry run)
+router.post('/terraform/plan',
+  ValidationMiddleware.validateArchitectureData,
+  TerraformController.generateTerraformPlan
+);
+
+// =====================================
+// MODULE MANAGEMENT ENDPOINTS
+// =====================================
+
+// Get available Terraform modules
+router.get('/modules', TerraformController.getAvailableModules);
+
+// Get specific module details
+router.get('/modules/:category/:name', TerraformController.getModuleDetails);
+
+// Validate module configuration
+router.post('/modules/validate',
+  TerraformController.validateModuleConfiguration
+);
+
+// Refresh module registry
+router.post('/modules/refresh', TerraformController.refreshModuleRegistry);
+
+// =====================================
+// FILE MANAGEMENT ENDPOINTS
+// =====================================
 
 // Get generated terraform files
 router.get('/terraform-files', TerraformController.getTerraformFiles);
 
 // Get specific terraform file content
-router.get('/terraform-files/:filename', 
+router.get('/terraform-files/:filename',
   ValidationMiddleware.validateFileName,
   TerraformController.getTerraformFileContent
 );
 
 // Download terraform file as attachment
-router.get('/terraform-files/:filename/download', 
+router.get('/terraform-files/:filename/download',
   ValidationMiddleware.validateFileName,
   TerraformController.downloadTerraformFile
 );

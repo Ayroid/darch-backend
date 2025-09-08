@@ -98,7 +98,7 @@ When reporting a vulnerability, please include:
    ```bash
    # Regularly audit dependencies
    npm audit
-   
+
    # Update dependencies carefully
    npm update
    ```

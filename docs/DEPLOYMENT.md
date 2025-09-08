@@ -1,6 +1,6 @@
 # Deployment Guide
 
-This guide covers deploying the Darch Backend in various environments, from development to production.
+This guide covers deploying the Darch Backend - a modular Terraform generation platform with enterprise-grade architecture parsing and validation capabilities - in various environments, from development to production.
 
 ## Table of Contents
 
@@ -13,17 +13,26 @@ This guide covers deploying the Darch Backend in various environments, from deve
 - [CI/CD Setup](#cicd-setup)
 - [Monitoring & Logging](#monitoring--logging)
 - [Security](#security)
+- [Module Registry Configuration](#module-registry-configuration)
 - [Troubleshooting](#troubleshooting)
 
 ## Overview
 
-The Darch Backend can be deployed in several ways:
+The Darch Backend is a modular Terraform generation platform that can be deployed in several ways:
 
-- **Local Development**: Direct Node.js execution
-- **Docker**: Containerized deployment
-- **Cloud Platforms**: AWS, Azure, GCP
+- **Local Development**: Direct Node.js execution with hot reloading
+- **Docker**: Containerized deployment with module registry
+- **Cloud Platforms**: AWS, Azure, GCP with auto-scaling
 - **Container Orchestration**: Kubernetes, Docker Swarm
 - **Platform as a Service**: Heroku, Railway, Vercel
+
+### Key Features
+- 🏗️ Modular Terraform generation
+- 📦 Comprehensive module registry (200+ modules)
+- 🔍 Advanced architecture validation
+- 🌐 Multi-cloud provider support (AWS, Azure, GCP)
+- 📊 Dependency resolution and conflict detection
+- 🚀 Enterprise-grade performance and scalability
 
 ## Environment Setup
 
@@ -37,6 +46,15 @@ NODE_ENV=development
 PORT=5000
 CORS_ORIGIN=http://localhost:3000
 LOG_LEVEL=debug
+
+# Module Registry Configuration
+MODULE_CACHE_ENABLED=true
+MODULE_CACHE_TTL=3600
+MODULE_VALIDATION_STRICT=false
+
+# Performance Settings
+MAX_CONCURRENT_GENERATIONS=5
+ARCHITECTURE_VALIDATION_TIMEOUT=30000
 ```
 
 #### Staging (.env.staging)
@@ -45,6 +63,15 @@ NODE_ENV=staging
 PORT=5000
 CORS_ORIGIN=https://staging-frontend.yourdomain.com
 LOG_LEVEL=info
+
+# Module Registry Configuration
+MODULE_CACHE_ENABLED=true
+MODULE_CACHE_TTL=7200
+MODULE_VALIDATION_STRICT=true
+
+# Performance Settings
+MAX_CONCURRENT_GENERATIONS=10
+ARCHITECTURE_VALIDATION_TIMEOUT=60000
 ```
 
 #### Production (.env.production)
@@ -53,6 +80,20 @@ NODE_ENV=production
 PORT=5000
 CORS_ORIGIN=https://yourdomain.com
 LOG_LEVEL=warn
+
+# Module Registry Configuration
+MODULE_CACHE_ENABLED=true
+MODULE_CACHE_TTL=14400
+MODULE_VALIDATION_STRICT=true
+
+# Performance Settings
+MAX_CONCURRENT_GENERATIONS=20
+ARCHITECTURE_VALIDATION_TIMEOUT=120000
+
+# Security
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX_REQUESTS=100
 ```
 
 ### Required Environment Variables
@@ -63,6 +104,14 @@ LOG_LEVEL=warn
 | `PORT` | No | `5000` | Server port |
 | `CORS_ORIGIN` | No | `*` | Allowed CORS origins |
 | `LOG_LEVEL` | No | `info` | Logging level |
+| `MODULE_CACHE_ENABLED` | No | `true` | Enable module registry caching |
+| `MODULE_CACHE_TTL` | No | `3600` | Module cache TTL in seconds |
+| `MODULE_VALIDATION_STRICT` | No | `false` | Strict module validation |
+| `MAX_CONCURRENT_GENERATIONS` | No | `5` | Max concurrent Terraform generations |
+| `ARCHITECTURE_VALIDATION_TIMEOUT` | No | `30000` | Validation timeout in ms |
+| `RATE_LIMIT_ENABLED` | No | `false` | Enable API rate limiting |
+| `RATE_LIMIT_WINDOW_MS` | No | `900000` | Rate limit window in ms |
+| `RATE_LIMIT_MAX_REQUESTS` | No | `100` | Max requests per window |
 
 ## Local Development
 
@@ -93,15 +142,27 @@ LOG_LEVEL=warn
 
 4. **Verify deployment:**
    ```bash
+   # Health check
    curl http://localhost:5000/health
+
+   # Module registry status
+   curl http://localhost:5000/api/modules
+
+   # Architecture validation
+   curl -X POST http://localhost:5000/api/validate-architecture \
+     -H "Content-Type: application/json" \
+     -d '{"metadata":{"name":"test","provider":"aws"},"nodes":[],"connections":[]}'
    ```
 
 ### Development Server Features
 
-- Hot reloading with nodemon
-- TypeScript compilation on change
-- Detailed error logging
+- Hot reloading with nodemon for rapid development
+- TypeScript compilation on file change
+- Detailed error logging and stack traces
 - CORS enabled for all origins
+- Module registry auto-loading and validation
+- Architecture validation with detailed feedback
+- Comprehensive API endpoints for testing
 
 ## Production Deployment
 
@@ -178,7 +239,7 @@ Create `/etc/nginx/sites-available/darch-backend`:
 server {
     listen 80;
     server_name api.yourdomain.com;
-    
+
     # Redirect HTTP to HTTPS
     return 301 https://$server_name$request_uri;
 }
@@ -186,20 +247,20 @@ server {
 server {
     listen 443 ssl http2;
     server_name api.yourdomain.com;
-    
+
     # SSL Configuration
     ssl_certificate /path/to/your/certificate.crt;
     ssl_certificate_key /path/to/your/private.key;
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512;
-    
+
     # Security Headers
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-XSS-Protection "1; mode=block" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "no-referrer-when-downgrade" always;
     add_header Content-Security-Policy "default-src 'self'" always;
-    
+
     # Proxy to Node.js application
     location / {
         proxy_pass http://localhost:5000;
@@ -211,19 +272,19 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_cache_bypass $http_upgrade;
-        
+
         # Timeouts
         proxy_connect_timeout 60s;
         proxy_send_timeout 60s;
         proxy_read_timeout 60s;
     }
-    
+
     # Health check endpoint (optional caching)
     location /health {
         proxy_pass http://localhost:5000;
         proxy_cache_valid 200 30s;
     }
-    
+
     # Static files for downloads (if needed)
     location /downloads/ {
         alias /path/to/terraform/files/;
@@ -386,26 +447,26 @@ CMD ["node", "dist/index.js"]
 2. **Setup script:**
    ```bash
    #!/bin/bash
-   
+
    # Update system
    sudo apt update && sudo apt upgrade -y
-   
+
    # Install Node.js
    curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
    sudo apt-get install -y nodejs
-   
+
    # Install PM2
    sudo npm install -g pm2
-   
+
    # Install Nginx
    sudo apt install -y nginx
-   
+
    # Clone and setup application
    git clone https://github.com/Ayroid/Darch-Backend.git
    cd Darch-Backend
    npm ci --only=production
    npm run build
-   
+
    # Start with PM2
    pm2 start ecosystem.config.js --env production
    pm2 save
@@ -541,19 +602,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '18'
           cache: 'npm'
-      
+
       - name: Install dependencies
         run: npm ci
-      
+
       - name: Build application
         run: npm run build
-      
+
       - name: Run tests
         run: npm test
 
@@ -561,27 +622,27 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
-    
+
     steps:
       - uses: actions/checkout@v3
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '18'
           cache: 'npm'
-      
+
       - name: Install dependencies
         run: npm ci --only=production
-      
+
       - name: Build application
         run: npm run build
-      
+
       - name: Build Docker image
         run: |
           docker build -t darch-backend:${{ github.sha }} .
           docker tag darch-backend:${{ github.sha }} darch-backend:latest
-      
+
       - name: Deploy to server
         uses: appleboy/ssh-action@v0.1.5
         with:
@@ -670,7 +731,7 @@ deploy:
    ```bash
    # Install htop for system monitoring
    sudo apt install htop
-   
+
    # Monitor system resources
    htop
    ```
@@ -681,7 +742,7 @@ deploy:
    ```typescript
    // In production, consider using winston
    import winston from 'winston';
-   
+
    const logger = winston.createLogger({
      level: process.env.LOG_LEVEL || 'info',
      format: winston.format.combine(
@@ -699,7 +760,7 @@ deploy:
    ```bash
    # Install logrotate
    sudo apt install logrotate
-   
+
    # Create logrotate config
    cat > /etc/logrotate.d/darch-backend << EOF
    /path/to/app/logs/*.log {
@@ -743,10 +804,10 @@ deploy:
    # Install Certbot
    sudo snap install core; sudo snap refresh core
    sudo snap install --classic certbot
-   
+
    # Obtain certificate
    sudo certbot --nginx -d api.yourdomain.com
-   
+
    # Auto-renewal
    sudo certbot renew --dry-run
    ```
@@ -779,7 +840,7 @@ sudo ufw allow from YOUR_IP to any port 22
    # Audit dependencies
    npm audit
    npm audit fix
-   
+
    # Keep dependencies updated
    npm update
    ```
@@ -788,6 +849,144 @@ sudo ufw allow from YOUR_IP to any port 22
    - Run application as non-root user
    - Limit file permissions
    - Use proper directory ownership
+
+## Module Registry Configuration
+
+### Pre-deployment Module Setup
+
+The Darch Backend includes a comprehensive module registry that must be properly configured for deployment:
+
+#### 1. Module Directory Structure Verification
+
+Ensure the module registry structure is intact:
+
+```bash
+# Verify module registry structure
+ls -la src/modules/registry/
+
+# Should show:
+# networking/    - VPC, subnets, gateways, load balancers
+# compute/       - EC2, auto-scaling, containers
+# security/      - Security groups, IAM, certificates
+# storage/       - S3, EBS, EFS, databases
+# monitoring/    - CloudWatch, logging, alerting
+# analytics/     - Data processing, ETL, warehousing
+
+# Verify module completeness
+find src/modules/registry -name "metadata.json" | wc -l
+# Should return 200+ modules
+```
+
+#### 2. Module Validation on Deployment
+
+```bash
+# Validate all modules before deployment
+npm run validate-modules
+
+# Check specific module categories
+npm run validate-modules -- --category networking
+npm run validate-modules -- --category compute
+
+# Test module loading performance
+npm run benchmark-modules
+```
+
+#### 3. Production Module Registry Optimization
+
+For production deployments, optimize module loading:
+
+```bash
+# Pre-compile module templates
+npm run compile-modules
+
+# Generate module registry cache
+npm run cache-modules
+
+# Validate module dependencies
+npm run validate-dependencies
+```
+
+#### 4. Custom Module Integration
+
+To add custom modules for deployment:
+
+```bash
+# Create custom module directory
+mkdir -p src/modules/registry/custom/
+
+# Add custom module
+cat > src/modules/registry/custom/my-service/metadata.json << 'EOF'
+{
+  "name": "my-service",
+  "category": "custom",
+  "version": "1.0.0",
+  "description": "Custom organization service",
+  "terraform_provider": "aws",
+  "variables": [...],
+  "outputs": [...],
+  "dependencies": []
+}
+EOF
+
+# Validate custom module
+npm run validate-modules -- --path src/modules/registry/custom/my-service
+```
+
+### Module Registry Performance Configuration
+
+#### Memory Optimization
+```javascript
+// In ecosystem.config.js
+module.exports = {
+  apps: [{
+    name: 'darch-backend',
+    script: 'dist/index.js',
+    instances: 'max',
+    node_args: [
+      '--max-old-space-size=2048',
+      '--optimize-for-size'
+    ],
+    env_production: {
+      MODULE_CACHE_SIZE: '1000',
+      MODULE_PRELOAD_ENABLED: 'true',
+      MODULE_LAZY_LOADING: 'false'
+    }
+  }]
+};
+```
+
+#### Caching Strategy
+```bash
+# Redis configuration for module caching (optional)
+# Install Redis for production module caching
+sudo apt install redis-server
+
+# Configure Redis for module cache
+cat >> /etc/redis/redis.conf << 'EOF'
+# Module cache configuration
+maxmemory 256mb
+maxmemory-policy allkeys-lru
+EOF
+```
+
+### Module Registry Health Checks
+
+Add module-specific health checks:
+
+```nginx
+# In nginx configuration
+location /health/modules {
+    proxy_pass http://localhost:5000/api/modules/health;
+    proxy_cache module_cache;
+    proxy_cache_valid 200 5m;
+    proxy_cache_key "$scheme$request_method$host$request_uri";
+}
+
+location /health/registry {
+    proxy_pass http://localhost:5000/api/registry/status;
+    access_log off;
+}
+```
 
 ## Troubleshooting
 
@@ -834,6 +1033,12 @@ sudo nginx -t
 # Application health
 curl http://localhost:5000/health
 
+# Module registry health
+curl http://localhost:5000/api/modules/health
+
+# Architecture validation service
+curl http://localhost:5000/api/validate/health
+
 # System resources
 free -h
 df -h
@@ -843,8 +1048,67 @@ top
 pm2 status
 pm2 logs darch-backend --lines 50
 
+# Module registry performance
+curl http://localhost:5000/api/modules/stats
+
 # Network connectivity
 netstat -tlnp | grep :5000
+```
+
+### Module Registry Troubleshooting
+
+#### 1. Module Loading Issues
+```bash
+# Check module registry logs
+pm2 logs darch-backend | grep "MODULE"
+
+# Validate specific module
+curl http://localhost:5000/api/modules/validate/vpc
+
+# Check module dependencies
+curl http://localhost:5000/api/modules/dependencies/ec2
+```
+
+#### 2. Architecture Validation Failures
+```bash
+# Test architecture validation
+curl -X POST http://localhost:5000/api/validate-architecture \
+  -H "Content-Type: application/json" \
+  -d @test-architecture.json
+
+# Check validation logs
+pm2 logs darch-backend | grep "VALIDATION"
+
+# Debug specific resource validation
+curl -X POST http://localhost:5000/api/validate/resource \
+  -H "Content-Type: application/json" \
+  -d '{"resourceType":"vpc","configuration":{"cidr_block":"10.0.0.0/16"}}'
+```
+
+#### 3. Terraform Generation Issues
+```bash
+# Test Terraform generation
+curl -X POST http://localhost:5000/api/generate-terraform \
+  -H "Content-Type: application/json" \
+  -d @test-architecture.json
+
+# Check generation logs
+pm2 logs darch-backend | grep "TERRAFORM"
+
+# Validate generated Terraform
+terraform validate /path/to/generated/main.tf
+```
+
+#### 4. Performance Issues
+```bash
+# Check module cache status
+curl http://localhost:5000/api/cache/status
+
+# Monitor generation performance
+curl http://localhost:5000/api/stats/performance
+
+# Clear module cache if needed
+curl -X DELETE http://localhost:5000/api/cache/modules
 ```
 
 ### Rollback Procedures
@@ -853,12 +1117,12 @@ netstat -tlnp | grep :5000
    ```bash
    # Stop current version
    pm2 stop darch-backend
-   
+
    # Checkout previous version
    git checkout HEAD~1
    npm ci --only=production
    npm run build
-   
+
    # Restart
    pm2 start darch-backend
    ```
@@ -867,7 +1131,7 @@ netstat -tlnp | grep :5000
    ```bash
    # Stop current container
    docker stop darch-backend
-   
+
    # Run previous version
    docker run -d --name darch-backend darch-backend:previous-tag
    ```
@@ -878,7 +1142,7 @@ netstat -tlnp | grep :5000
    ```bash
    # Enable production optimizations
    NODE_ENV=production npm start
-   
+
    # Use cluster mode
    pm2 start ecosystem.config.js -i max
    ```
@@ -888,7 +1152,7 @@ netstat -tlnp | grep :5000
    # Enable gzip compression
    gzip on;
    gzip_types text/plain application/json;
-   
+
    # Enable caching
    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
      expires 1y;

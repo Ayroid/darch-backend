@@ -1,44 +1,10 @@
 import fs from 'fs';
 import path from 'path';
-import { TerraformGenerator } from '../terraform-generator.js';
-import { TerraformFile, GeneratedTerraform } from '../models/Architecture.js';
+import { TerraformFile } from '../models/Architecture.js';
+import { TerraformGenerationResult } from './ModularTerraformGeneratorService.js';
 
 export class FileService {
   private static outputDir = path.resolve('./src/output');
-
-  /**
-   * Generate Terraform file from configuration
-   */
-  static async generateTerraformFile(
-    terraformConfig: any, 
-    projectName: string = 'infrastructure'
-  ): Promise<GeneratedTerraform> {
-    console.log('🔄 Converted to Terraform config:', JSON.stringify(terraformConfig, null, 2));
-
-    // Generate Terraform using the AST-based approach
-    const generator = new TerraformGenerator(terraformConfig);
-    const terraformCode = generator.generateTerraform();
-
-    // Create output directory
-    fs.mkdirSync(this.outputDir, { recursive: true });
-
-    // Generate unique filename with timestamp
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `${projectName}-${timestamp}.tf`;
-    const outputPath = path.join(this.outputDir, filename);
-
-    // Write terraform file
-    fs.writeFileSync(outputPath, terraformCode);
-
-    console.log(`✅ Terraform generated: ${filename}`);
-
-    return {
-      terraformCode,
-      filename,
-      outputPath: path.relative(process.cwd(), outputPath),
-      generatedAt: new Date().toISOString()
-    };
-  }
 
   /**
    * Get list of generated Terraform files
@@ -88,5 +54,37 @@ export class FileService {
     }
 
     return filePath;
+  }
+
+  /**
+   * Save generated Terraform files from modular generation
+   */
+  static async saveGeneratedTerraformFiles(
+    terraformResult: TerraformGenerationResult,
+    projectName: string = 'infrastructure'
+  ): Promise<{ projectDir: string; files: string[] }> {
+    console.log('💾 Saving generated Terraform files...');
+
+    // Create project directory
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const projectDir = path.join(this.outputDir, `${projectName}-${timestamp}`);
+    fs.mkdirSync(projectDir, { recursive: true });
+
+    const savedFiles: string[] = [];
+
+    // Save all generated files
+    for (const file of terraformResult.files) {
+      const filePath = path.join(projectDir, file.filename);
+      fs.writeFileSync(filePath, file.content);
+      savedFiles.push(file.filename);
+      console.log(`📁 Saved: ${file.filename}`);
+    }
+
+    console.log(`✅ Saved ${savedFiles.length} Terraform files to ${projectDir}`);
+
+    return {
+      projectDir: path.relative(process.cwd(), projectDir),
+      files: savedFiles
+    };
   }
 }

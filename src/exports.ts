@@ -7,9 +7,12 @@ export * from './controllers/HealthController.js';
 export * from './controllers/TerraformController.js';
 
 // Services
-export * from './services/TerraformConfigService.js';
 export * from './services/FileService.js';
 export * from './services/CLIService.js';
+export * from './services/ModuleRegistryService.js';
+export * from './services/ArchitectureParserService.js';
+export * from './services/ModuleMapperService.js';
+export { ModularTerraformGeneratorService, TerraformGenerationResult } from './services/ModularTerraformGeneratorService.js';
 
 // Views
 export * from './views/ResponseView.js';

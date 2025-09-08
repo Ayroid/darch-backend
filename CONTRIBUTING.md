@@ -1,11 +1,12 @@
 # Contributing to Darch Backend
 
-We love your input! We want to make contributing to Darch Backend as easy and transparent as possible, whether it's:
+We love your input! We want to make contributing to Darch Backend - a modular Terraform generation platform with enterprise-grade architecture parsing capabilities - as easy and transparent as possible, whether it's:
 
 - Reporting a bug
 - Discussing the current state of the code
 - Submitting a fix
 - Proposing new features
+- Adding new modules to the registry
 - Becoming a maintainer
 
 ## Development Process
@@ -16,12 +17,13 @@ We use GitHub to host code, to track issues and feature requests, as well as acc
 
 Pull requests are the best way to propose changes to the codebase:
 
-1. Fork the repo and create your branch from `master`.
+1. Fork the repo and create your branch from `main`.
 2. If you've added code that should be tested, add tests.
 3. If you've changed APIs, update the documentation.
-4. Ensure the test suite passes.
-5. Make sure your code lints.
-6. Issue that pull request!
+4. If you've added new modules, include proper metadata and tests.
+5. Ensure the test suite passes.
+6. Make sure your code lints.
+7. Issue that pull request!
 
 ## Getting Started
 
@@ -54,6 +56,117 @@ Pull requests are the best way to propose changes to the codebase:
    ```bash
    npm run dev
    ```
+
+5. **Verify module registry:**
+   ```bash
+   # Check module loading
+   curl http://localhost:5000/api/modules
+
+   # Test architecture validation
+   curl -X POST http://localhost:5000/api/validate-architecture \
+     -H "Content-Type: application/json" \
+     -d @examples/sample-architecture.json
+   ```
+
+## Contributing to the Module Registry
+
+### Adding New Modules
+
+The Darch Backend includes a comprehensive module registry. To contribute new modules:
+
+#### 1. Module Structure
+
+Create a new module in the appropriate category:
+
+```bash
+# Choose the appropriate category
+mkdir -p src/modules/registry/compute/my-new-service
+
+# Create module metadata
+cat > src/modules/registry/compute/my-new-service/metadata.json << 'EOF'
+{
+  "name": "my-new-service",
+  "category": "compute",
+  "version": "1.0.0",
+  "description": "Description of the new service module",
+  "author": "Your Name",
+  "tags": ["compute", "aws", "my-service"],
+  "terraform_provider": "aws",
+  "terraform_resource": "aws_my_service",
+  "variables": [
+    {
+      "name": "service_name",
+      "type": "string",
+      "description": "Name of the service",
+      "required": true,
+      "validation": {
+        "pattern": "^[a-zA-Z0-9-]+$",
+        "minLength": 1,
+        "maxLength": 64
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "name": "service_id",
+      "description": "ID of the created service"
+    }
+  ],
+  "dependencies": [],
+  "cost_estimate": {
+    "monthly_base": 0,
+    "description": "Cost depends on usage"
+  }
+}
+EOF
+```
+
+#### 2. Terraform Template
+
+Create the Terraform template:
+
+```bash
+cat > src/modules/registry/compute/my-new-service/main.tf << 'EOF'
+resource "aws_my_service" "{{sanitized_name}}" {
+  name = var.service_name
+
+  {{#each additional_config}}
+  {{@key}} = {{this}}
+  {{/each}}
+
+  tags = merge(var.tags, {
+    Name = var.service_name
+    Module = "my-new-service"
+  })
+}
+EOF
+```
+
+#### 3. Module Testing
+
+Test your new module:
+
+```bash
+# Validate module metadata
+npm run validate-module -- src/modules/registry/compute/my-new-service
+
+# Test module in generation pipeline
+npm run test-module -- my-new-service
+
+# Integration test
+npm run test:modules -- --module my-new-service
+```
+
+#### 4. Module Categories
+
+Choose the appropriate category for your module:
+
+- **networking**: VPC, subnets, load balancers, gateways
+- **compute**: EC2, containers, serverless, auto-scaling
+- **security**: IAM, security groups, certificates, encryption
+- **storage**: S3, databases, file systems, backup
+- **monitoring**: CloudWatch, logging, alerting, metrics
+- **analytics**: Data processing, ETL, machine learning
 
 ## Code Style
 
@@ -121,14 +234,26 @@ function doStuff(x: any) {
 
 ```
 src/
-├── models/          # Interfaces and type definitions
-├── views/           # Response formatting
-├── controllers/     # HTTP request handlers
-├── services/        # Business logic
-├── routes/          # API endpoint definitions
-├── middleware/      # Express middleware
-├── utils/           # Helper functions
-└── data/            # Static data and templates
+├── controllers/        # HTTP request handlers
+│   └── TerraformController.ts    # Main modular controller
+├── services/          # Business logic and orchestration
+│   ├── ModuleRegistryService.ts      # Module discovery & validation
+│   ├── ArchitectureParserService.ts  # Architecture parsing & validation
+│   ├── ModularTerraformGeneratorService.ts  # Terraform generation
+│   └── FileService.ts               # File operations
+├── models/            # Data structures & interfaces
+│   ├── Architecture.ts    # Architecture data models
+│   ├── Module.ts         # Module definitions
+│   └── Terraform.ts      # Terraform output models
+├── views/             # Response formatting
+├── routes/            # API endpoint definitions
+├── middleware/        # Express middleware
+├── utils/             # Helper functions
+├── templates/         # Handlebars templates
+├── modules/           # Module registry
+│   ├── registry/       # Module metadata & schemas
+│   └── templates/      # Module Terraform templates
+└── data/              # Static data and legacy templates
 ```
 
 ### Import Order
@@ -178,16 +303,19 @@ We follow the [Conventional Commits](https://www.conventionalcommits.org/) speci
 
 ```bash
 # Good commit messages
-feat: add support for Azure resource types
-fix: resolve memory leak in terraform generation
-docs: update API documentation for new endpoints
-refactor: extract validation logic to separate service
-test: add unit tests for TerraformConfigService
+feat: add Azure virtual machine module to registry
+fix: resolve dependency resolution in module registry
+docs: update module contribution guidelines
+refactor: optimize module loading performance
+test: add integration tests for architecture validation
+feat(modules): add RDS database module with backup configuration
+fix(validation): handle circular dependencies in architecture
 
 # Bad commit messages
 update stuff
 fixed bug
 more changes
+add module
 ```
 
 ## Pull Request Process
@@ -205,16 +333,25 @@ more changes
 Use a clear title that describes what the PR does:
 
 ```
-feat: Add Azure resource type support
+feat: Add Azure virtual machine module support
 
-This PR adds support for Azure resource types in the Terraform generator:
+This PR adds Azure virtual machine module to the module registry:
 
-- Added Azure resource type mappings
-- Updated validation to accept Azure resources  
-- Added Azure provider configuration
-- Updated documentation with Azure examples
+- Added Azure VM module with comprehensive metadata
+- Implemented size validation and region constraints
+- Added dependency on resource group and virtual network
+- Updated module registry to support Azure provider
+- Added integration tests for Azure VM generation
+- Updated documentation with Azure VM examples
+
+The module supports:
+- Multiple VM sizes with validation
+- Custom disk configurations
+- Network security group integration
+- Backup and monitoring options
 
 Fixes #123
+Closes #124
 ```
 
 ### PR Checklist
@@ -334,23 +471,40 @@ npm test
 #### Test Structure
 
 ```typescript
-// test/services/TerraformConfigService.test.ts
-describe('TerraformConfigService', () => {
-  describe('convertArchitectureDataToTerraformConfig', () => {
-    it('should convert basic EC2 configuration', () => {
-      const input = createMockArchitectureData();
-      const result = TerraformConfigService.convertArchitectureDataToTerraformConfig(input);
-      
-      expect(result).toHaveProperty('provider.aws');
-      expect(result.resources.aws_instance).toBeDefined();
+// test/services/ModuleRegistryService.test.ts
+describe('ModuleRegistryService', () => {
+  describe('getAvailableModules', () => {
+    it('should return all available modules', async () => {
+      const modules = await ModuleRegistryService.getAvailableModules();
+
+      expect(modules).toBeInstanceOf(Array);
+      expect(modules.length).toBeGreaterThan(0);
+      expect(modules[0]).toHaveProperty('name');
+      expect(modules[0]).toHaveProperty('category');
     });
-    
-    it('should handle missing configuration gracefully', () => {
-      const input = createInvalidArchitectureData();
-      
-      expect(() => {
-        TerraformConfigService.convertArchitectureDataToTerraformConfig(input);
-      }).not.toThrow();
+
+    it('should filter modules by category', async () => {
+      const networkingModules = await ModuleRegistryService.getModulesByCategory('networking');
+
+      expect(networkingModules.every(m => m.category === 'networking')).toBe(true);
+    });
+  });
+
+  describe('validateModuleConfiguration', () => {
+    it('should validate VPC module configuration', async () => {
+      const config = { cidr_block: '10.0.0.0/16' };
+      const result = await ModuleRegistryService.validateModuleConfig('vpc', config);
+
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('should reject invalid CIDR blocks', async () => {
+      const config = { cidr_block: 'invalid-cidr' };
+      const result = await ModuleRegistryService.validateModuleConfig('vpc', config);
+
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContain('Invalid CIDR block format');
     });
   });
 });
@@ -359,21 +513,90 @@ describe('TerraformConfigService', () => {
 #### API Tests
 
 ```typescript
-// test/api/terraform.test.ts
-describe('Terraform API', () => {
-  it('should generate terraform from raw config', async () => {
-    const config = {
-      provider: { aws: { region: 'us-east-1' } },
-      resource: { aws_instance: { test: { ami: 'ami-12345' } } }
-    };
-
+// test/api/modules.test.ts
+describe('Modules API', () => {
+  it('should return available modules', async () => {
     const response = await request(app)
-      .post('/api/generate-terraform-raw')
-      .send(config)
+      .get('/api/modules')
       .expect(200);
 
     expect(response.body.success).toBe(true);
-    expect(response.body.data.terraformCode).toContain('provider "aws"');
+    expect(response.body.data).toHaveProperty('modules');
+    expect(response.body.data.modules).toBeInstanceOf(Array);
+  });
+
+  it('should generate terraform from architecture', async () => {
+    const architecture = {
+      metadata: { name: 'test', provider: 'aws' },
+      nodes: [
+        {
+          id: 'vpc-1',
+          resourceType: 'vpc',
+          configuration: { cidr_block: '10.0.0.0/16' }
+        }
+      ],
+      connections: []
+    };
+
+    const response = await request(app)
+      .post('/api/generate-terraform')
+      .send(architecture)
+      .expect(200);
+
+    expect(response.body.success).toBe(true);
+    expect(response.body.data.terraformCode).toContain('resource "aws_vpc"');
+  });
+
+  it('should validate architecture with dependencies', async () => {
+    const architecture = {
+      metadata: { name: 'test', provider: 'aws' },
+      nodes: [
+        {
+          id: 'ec2-1',
+          resourceType: 'ec2',
+          configuration: { instance_type: 't3.micro' }
+          // Missing VPC dependency
+        }
+      ],
+      connections: []
+    };
+
+    const response = await request(app)
+      .post('/api/validate-architecture')
+      .send(architecture)
+      .expect(400);
+
+    expect(response.body.success).toBe(false);
+    expect(response.body.error).toContain('dependency');
+  });
+});
+```
+
+#### Module Tests
+
+```typescript
+// test/modules/vpc.test.ts
+describe('VPC Module', () => {
+  it('should validate VPC metadata', () => {
+    const metadata = require('../../src/modules/registry/networking/vpc/metadata.json');
+
+    expect(metadata).toHaveProperty('name', 'vpc');
+    expect(metadata).toHaveProperty('category', 'networking');
+    expect(metadata.variables).toContainEqual(
+      expect.objectContaining({
+        name: 'cidr_block',
+        required: true
+      })
+    );
+  });
+
+  it('should generate valid Terraform for VPC', async () => {
+    const config = { cidr_block: '10.0.0.0/16', name: 'test-vpc' };
+    const terraform = await ModularTerraformGeneratorService.generateModuleTerraform('vpc', config);
+
+    expect(terraform).toContain('resource "aws_vpc"');
+    expect(terraform).toContain('cidr_block = "10.0.0.0/16"');
+    expect(terraform).toContain('enable_dns_hostnames = true');
   });
 });
 ```
@@ -384,22 +607,63 @@ describe('Terraform API', () => {
 
 When adding support for a new cloud provider:
 
-1. **Extend resource mapping** in `TerraformConfigService`
-2. **Add provider configuration** logic
-3. **Update validation** to accept new provider
-4. **Add templates** if needed
-5. **Update documentation**
-6. **Add tests** for the new provider
+1. **Create provider module structure**
+   ```bash
+   mkdir -p src/modules/registry/providers/azure
+   ```
 
-### Modifying Core Generator
+2. **Add provider metadata**
+   ```json
+   {
+     "name": "azure",
+     "terraform_provider": "azurerm",
+     "required_version": ">= 3.0",
+     "regions": ["eastus", "westus2", "westeurope"],
+     "authentication": ["azure_cli", "service_principal"]
+   }
+   ```
 
-The `TerraformGenerator` is the core of the application. When modifying:
+3. **Extend resource mapping** in `ModuleRegistryService`
+4. **Add provider-specific modules** to appropriate categories
+5. **Update validation** to accept new provider
+6. **Add comprehensive tests** for the new provider
+7. **Update documentation** with provider examples
 
-1. **Ensure backward compatibility**
-2. **Add comprehensive tests**
-3. **Update documentation**
-4. **Consider performance impact**
-5. **Test with various configurations**
+### Adding New Module Categories
+
+When adding a new module category:
+
+1. **Create category structure**
+   ```bash
+   mkdir -p src/modules/registry/new-category
+   ```
+
+2. **Add category metadata**
+   ```json
+   {
+     "name": "new-category",
+     "description": "Description of the new category",
+     "icon": "📦",
+     "modules": [],
+     "dependencies": ["networking"]
+   }
+   ```
+
+3. **Update registry service** to include new category
+4. **Add category-specific validation** rules
+5. **Create initial modules** for the category
+6. **Update documentation** and examples
+
+### Modifying Core Architecture Parser
+
+The `ArchitectureParserService` handles architecture validation and parsing. When modifying:
+
+1. **Ensure backward compatibility** with existing architectures
+2. **Add comprehensive validation** for new features
+3. **Update dependency resolution** if needed
+4. **Add performance optimizations** where possible
+5. **Test with complex architectures** containing many resources
+6. **Update validation error messages** to be helpful
 
 ### API Changes
 
@@ -420,10 +684,10 @@ Use JSDoc comments for public APIs:
 ```typescript
 /**
  * Convert architecture data to Terraform configuration
- * 
+ *
  * @param architectureData - The frontend architecture representation
  * @returns Terraform-compatible configuration object
- * 
+ *
  * @example
  * ```typescript
  * const config = TerraformConfigService.convertArchitectureDataToTerraformConfig(

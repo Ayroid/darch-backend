@@ -4,13 +4,13 @@ export class ValidationUtils {
    */
   static validateRequiredFields(obj: any, requiredFields: string[]): string[] {
     const missingFields: string[] = [];
-    
+
     for (const field of requiredFields) {
       if (!obj || obj[field] === undefined || obj[field] === null) {
         missingFields.push(field);
       }
     }
-    
+
     return missingFields;
   }
 

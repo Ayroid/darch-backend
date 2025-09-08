@@ -1,22 +1,33 @@
 import { App } from './App.js';
 import { CLIService } from './services/CLIService.js';
+import { ModuleRegistryService } from './services/ModuleRegistryService.js';
 
 /**
  * Main entry point for the Darch Backend
  * Supports both server mode and CLI mode
  */
-function main(): void {
-  // Check if running in CLI mode
-  if (process.argv.includes('--cli')) {
-    console.log('🛠️ Running in CLI mode...');
-    CLIService.runCLI();
-    return;
-  }
+async function main(): Promise<void> {
+  try {
+    // Initialize module registry for modular architecture
+    console.log('🔧 Initializing Terraform Module Registry...');
+    await ModuleRegistryService.initialize();
 
-  // Run in server mode
-  console.log('🌐 Starting server mode...');
-  const app = new App();
-  app.start();
+    // Check if running in CLI mode
+    if (process.argv.includes('--cli')) {
+      console.log('🛠️ Running in CLI mode...');
+      CLIService.runCLI();
+      return;
+    }
+
+    // Run in server mode
+    console.log('🌐 Starting server mode...');
+    const app = new App();
+    app.start();
+
+  } catch (error) {
+    console.error('❌ Failed to start application:', error);
+    process.exit(1);
+  }
 }
 
 // Handle uncaught exceptions

@@ -1,12 +1,13 @@
 # Architecture Documentation
 
-This document provides a detailed overview of the Darch Backend architecture, design patterns, and implementation details.
+This document provides a detailed overview of the Darch Backend modular Terraform architecture, design patterns, and implementation details.
 
 ## Table of Contents
 
 - [Overview](#overview)
-- [Architecture Pattern](#architecture-pattern)
+- [Modular Architecture Pattern](#modular-architecture-pattern)
 - [Core Components](#core-components)
+- [Module Registry System](#module-registry-system)
 - [Data Flow](#data-flow)
 - [Design Decisions](#design-decisions)
 - [File Structure](#file-structure)
@@ -15,40 +16,72 @@ This document provides a detailed overview of the Darch Backend architecture, de
 
 ## Overview
 
-The Darch Backend is designed as a robust, scalable TypeScript application that converts AWS architecture diagrams into valid Terraform configurations. It follows clean architecture principles with clear separation of concerns and modular design.
+The Darch Backend is designed as an enterprise-grade, scalable TypeScript application that transforms AWS architecture diagrams into production-ready, modular Terraform configurations. It features a comprehensive module registry system, automatic dependency resolution, and advanced validation capabilities.
 
-## Architecture Pattern
+## Modular Architecture Pattern
 
-### MVC (Model-View-Controller) Pattern
+### Service-Oriented Architecture with Module Registry
 
-The application follows a modified MVC pattern adapted for API services:
+The application follows a service-oriented architecture with a centralized module registry:
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Client/API    │    │   Controllers   │    │    Services     │
-│   (HTTP Layer)  │◄──►│  (Coordination) │◄──►│ (Business Logic)│
+│   Client/API    │    │   Controller    │    │ Module Registry │
+│   (HTTP Layer)  │◄──►│  (Unified API)  │◄──►│    Service      │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
                                 ▲                        ▲
                                 │                        │
                                 ▼                        ▼
                        ┌─────────────────┐    ┌─────────────────┐
-                       │     Views       │    │     Models      │
-                       │   (Response     │    │   (Data Layer)  │
-                       │   Formatting)   │    │                 │
+                       │   Architecture  │    │     Module      │
+                       │     Parser      │    │     Mapper      │
+                       │    Service      │    │    Service      │
+                       └─────────────────┘    └─────────────────┘
+                                ▲                        ▲
+                                │                        │
+                                ▼                        ▼
+                       ┌─────────────────┐    ┌─────────────────┐
+                       │   Terraform     │    │   Terraform     │
+                       │   Generator     │    │    Modules      │
+                       │    Service      │    │   (Registry)    │
                        └─────────────────┘    └─────────────────┘
 ```
 
-### Layered Architecture
+### Layered Architecture with Module Management
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      Presentation Layer                     │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │   Routes    │  │ Controllers │  │    Middleware       │  │
-│  │             │  │             │  │                     │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
+│                      API Layer                              │
+│  ┌─────────────┐  ┌─────────────────────────────────────┐  │
+│  │   Routes    │  │        TerraformController           │  │
+│  │             │  │     (Unified API Interface)         │  │
+│  └─────────────┘  └─────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
 ┌─────────────────────────────────────────────────────────────┐
+│                    Service Layer                            │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────────┐   │
+│  │   Module     │ │ Architecture │ │     Module       │   │
+│  │  Registry    │ │   Parser     │ │    Mapper        │   │
+│  │  Service     │ │   Service    │ │   Service        │   │
+│  └──────────────┘ └──────────────┘ └──────────────────┘   │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────────┐   │
+│  │  Terraform   │ │     File     │ │   Validation     │   │
+│  │  Generator   │ │   Service    │ │   Service        │   │
+│  │   Service    │ │              │ │                  │   │
+│  └──────────────┘ └──────────────┘ └──────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                    Module Registry                          │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────────┐   │
+│  │  Networking  │ │   Compute    │ │    Security      │   │
+│  │   Modules    │ │   Modules    │ │    Modules       │   │
+│  └──────────────┘ └──────────────┘ └──────────────────┘   │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────────┐   │
+│  │   Storage    │ │  Monitoring  │ │    Database      │   │
+│  │   Modules    │ │   Modules    │ │    Modules       │   │
+│  └──────────────┘ └──────────────┘ └──────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+```
 │                      Business Layer                         │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
 │  │  Services   │  │    Utils    │  │   TerraformGen      │  │
@@ -66,45 +99,243 @@ The application follows a modified MVC pattern adapted for API services:
 
 ## Core Components
 
-### 1. Application Layer
+### 1. Unified Controller Layer
 
-#### App.ts
-- **Purpose**: Main application entry point and Express.js configuration
+#### TerraformController
+- **Purpose**: Single unified controller handling all Terraform operations
 - **Responsibilities**:
-  - Server initialization and configuration
-  - Middleware registration
-  - Route mounting
-  - Error handling setup
-  - CORS configuration
-
-```typescript
-export class App {
-  private app: express.Application;
-  private port: number;
-  
-  constructor() {
-    this.app = express();
-    this.port = ConfigUtils.getPort();
-    this.initializeMiddleware();
-    this.initializeRoutes();
-    this.initializeErrorHandling();
-  }
-}
-```
-
-### 2. Presentation Layer
-
-#### Controllers
-- **Purpose**: Handle HTTP requests and coordinate business logic
-- **Pattern**: Controller pattern with static methods
-- **Responsibilities**:
-  - Request validation
-  - Service orchestration
-  - Response formatting
-  - Error handling
+  - Modular Terraform generation
+  - Architecture validation
+  - Module management
+  - Dependency validation
+  - Plan generation
+  - File management
 
 ```typescript
 export class TerraformController {
+  // Terraform Generation
+  static async generateModularTerraform(req: Request, res: Response): Promise<void>
+
+  // Architecture Validation
+  static async validateArchitecture(req: Request, res: Response): Promise<void>
+  static async validateDependencies(req: Request, res: Response): Promise<void>
+
+  // Module Management
+  static async getAvailableModules(req: Request, res: Response): Promise<void>
+  static async getModuleDetails(req: Request, res: Response): Promise<void>
+  static async validateModuleConfiguration(req: Request, res: Response): Promise<void>
+  static async refreshModuleRegistry(req: Request, res: Response): Promise<void>
+
+  // Plan Generation
+  static async generateTerraformPlan(req: Request, res: Response): Promise<void>
+
+  // File Management
+  static async getTerraformFiles(req: Request, res: Response): Promise<void>
+  static async getTerraformFileContent(req: Request, res: Response): Promise<void>
+  static async downloadTerraformFile(req: Request, res: Response): Promise<void>
+}
+```
+
+### 2. Service Layer
+
+#### ModuleRegistryService
+- **Purpose**: Centralized module registry and discovery
+- **Responsibilities**:
+  - Module loading and initialization
+  - Module metadata management
+  - Module validation
+  - Category organization
+
+```typescript
+export class ModuleRegistryService {
+  static async initialize(): Promise<void>
+  static async getAvailableModules(): Promise<TerraformModule[]>
+  static async getModule(category: string, name: string): Promise<TerraformModule | null>
+  static async getModuleMetadata(category: string, name: string): Promise<ModuleMetadata>
+  static async validateModuleConfiguration(category: string, name: string, config: any): Promise<ValidationResult>
+  static async refresh(): Promise<void>
+}
+```
+
+#### ArchitectureParserService
+- **Purpose**: Parse and validate architecture designs
+- **Responsibilities**:
+  - Architecture data parsing
+  - Validation rule enforcement
+  - Dependency analysis
+  - Circular dependency detection
+
+```typescript
+export class ArchitectureParserService {
+  static parseArchitecture(architectureData: ArchitectureData): ParsedArchitecture
+  static validateNodes(nodes: ArchitectureNode[]): ValidationResult
+  static validateConnections(connections: ArchitectureConnection[]): ValidationResult
+  static analyzeResourceDependencies(nodes: ArchitectureNode[], connections: ArchitectureConnection[]): DependencyAnalysis
+}
+```
+
+#### ModuleMapperService
+- **Purpose**: Map architecture to appropriate Terraform modules
+- **Responsibilities**:
+  - Resource type to module mapping
+  - Dependency resolution
+  - Topological sorting
+  - Variable mapping
+
+```typescript
+export class ModuleMapperService {
+  static async mapArchitectureToModules(parsedArchitecture: ParsedArchitecture): Promise<ModuleMappingResult>
+  static resolveResourceDependencies(modules: MappedModule[]): DependencyResolution
+  static performTopologicalSort(dependencies: ModuleDependency[]): SortedDependencies
+  static mapVariables(moduleConfig: any, moduleSchema: ModuleSchema): VariableMapping
+}
+```
+
+#### ModularTerraformGeneratorService
+- **Purpose**: Generate production-ready modular Terraform configurations
+- **Responsibilities**:
+  - Modular Terraform code generation
+  - File structure organization
+  - Syntax validation
+  - Output formatting
+
+```typescript
+export class ModularTerraformGeneratorService {
+  static generateTerraformConfiguration(mappingResult: ModuleMappingResult, metadata: ArchitectureMetadata, projectName: string): TerraformGenerationResult
+  static generateMainTf(modules: MappedModule[]): string
+  static generateVariablesTf(variables: VariableDefinition[]): string
+  static generateOutputsTf(outputs: OutputDefinition[]): string
+  static validateTerraformSyntax(terraformCode: string): ValidationResult
+}
+```
+
+### 3. Module Registry System
+
+#### Module Structure
+```
+terraform-modules/
+├── networking/
+│   ├── vpc/
+│   │   ├── main.tf
+│   │   ├── variables.tf
+│   │   ├── outputs.tf
+│   │   └── metadata.json
+│   ├── subnet/
+│   └── internet-gateway/
+├── compute/
+│   ├── ec2/
+│   ├── auto-scaling/
+│   └── load-balancer/
+├── security/
+│   ├── security-group/
+│   ├── iam-role/
+│   └── key-pair/
+└── storage/
+    ├── s3/
+    ├── ebs/
+    └── efs/
+```
+
+#### Module Metadata Schema
+```typescript
+interface ModuleMetadata {
+  name: string;
+  category: string;
+  version: string;
+  description: string;
+  author: string;
+  tags: string[];
+  variables: VariableDefinition[];
+  outputs: OutputDefinition[];
+  dependencies: string[];
+  examples: ModuleExample[];
+  documentation: string;
+}
+```
+
+### 4. Data Models
+
+#### Architecture Data Model
+```typescript
+interface ArchitectureData {
+  metadata: ArchitectureMetadata;
+  nodes: ArchitectureNode[];
+  connections: ArchitectureConnection[];
+}
+
+interface ArchitectureNode {
+  id: string;
+  name: string;
+  resourceType: string;
+  position: Position;
+  configuration: Record<string, any>;
+}
+
+interface ArchitectureConnection {
+  id: string;
+  sourceId: string;
+  targetId: string;
+  connectionType: string;
+}
+```
+
+#### Terraform Module Model
+```typescript
+interface TerraformModule {
+  name: string;
+  category: string;
+  version: string;
+  description: string;
+  path: string;
+  variables: VariableDefinition[];
+  outputs: OutputDefinition[];
+  dependencies: string[];
+}
+
+interface MappedModule {
+  id: string;
+  name: string;
+  source: string;
+  variables: Record<string, any>;
+  dependsOn: string[];
+}
+```
+
+### 5. Validation Layer
+
+#### ValidationMiddleware
+- **Purpose**: Input validation and security checks
+- **Responsibilities**:
+  - Request body validation
+  - Parameter sanitization
+  - Security headers
+  - Rate limiting preparation
+
+#### ValidationUtils
+- **Purpose**: Reusable validation functions
+- **Responsibilities**:
+  - Architecture data validation
+  - CIDR block validation
+  - Resource name validation
+  - Configuration validation
+
+### 6. Response Layer
+
+#### ResponseView
+- **Purpose**: Standardized API response formatting
+- **Responsibilities**:
+  - Success response formatting
+  - Error response formatting
+  - Data transformation
+  - Metadata inclusion
+
+```typescript
+export class ResponseView {
+  static success(data: any, message?: string): ApiResponse
+  static error(error: string, details?: string): ApiResponse
+  static terraformFilesList(files: TerraformFile[]): ApiResponse
+  static terraformFileContent(filename: string, content: string): ApiResponse
+}
   static async generateTerraform(req: Request, res: Response): Promise<void> {
     // Coordinate between services and return response
   }
@@ -168,11 +399,11 @@ Core business logic components:
 ```typescript
 class TerraformGenerator {
   private blocks: TerraformBlock[] = [];
-  
+
   constructor(private jsonConfig: any) {
     this.parseJsonToBlocks();
   }
-  
+
   public generateTerraform(): string {
     // Generate HCL code
   }
@@ -213,24 +444,212 @@ class TerraformGenerator {
   - Required field checking
   - Data type validation
 
+## Module Registry System
+
+### Module Discovery and Loading
+
+```
+Application Start
+     │
+     ▼
+┌─────────────────┐
+│ Module Registry │
+│  Initialization │
+└─────────────────┘
+     │
+     ▼
+┌─────────────────┐
+│  Scan Module    │
+│   Directories   │
+└─────────────────┘
+     │
+     ▼
+┌─────────────────┐
+│ Load Metadata   │
+│   and Schemas   │
+└─────────────────┘
+     │
+     ▼
+┌─────────────────┐
+│   Validate      │
+│    Modules      │
+└─────────────────┘
+     │
+     ▼
+┌─────────────────┐
+│ Build Registry  │
+│     Cache       │
+└─────────────────┘
+```
+
+### Module Categories
+
+#### 1. Networking Modules
+- **VPC**: Virtual Private Cloud with DNS configuration
+- **Subnet**: Public/private subnets with routing
+- **Internet Gateway**: Internet connectivity
+- **NAT Gateway**: Outbound internet for private subnets
+- **Route Table**: Custom routing configurations
+
+#### 2. Compute Modules
+- **EC2**: Elastic Compute instances
+- **Auto Scaling Group**: Scalable instance groups
+- **Load Balancer**: Application and network load balancers
+- **Launch Template**: Instance launch configurations
+
+#### 3. Security Modules
+- **Security Group**: Network firewall rules
+- **IAM Role**: Identity and access management
+- **Key Pair**: SSH key management
+- **Network ACL**: Subnet-level security
+
+#### 4. Storage Modules
+- **S3**: Object storage with policies
+- **EBS**: Block storage volumes
+- **EFS**: Elastic file system
+
+### Module Metadata Structure
+
+```json
+{
+  "name": "vpc",
+  "category": "networking",
+  "version": "1.0.0",
+  "description": "AWS VPC with configurable CIDR and DNS settings",
+  "variables": [
+    {
+      "name": "cidr_block",
+      "type": "string",
+      "description": "CIDR block for the VPC",
+      "required": true,
+      "validation": {
+        "pattern": "^([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "name": "vpc_id",
+      "description": "ID of the VPC"
+    }
+  ],
+  "dependencies": [],
+  "tags": ["networking", "vpc", "aws"]
+}
+```
+
 ## Data Flow
 
-### 1. Terraform Generation Flow
+### 1. Modular Terraform Generation Flow
 
 ```
 ┌─────────────┐    ┌─────────────────┐    ┌───────────────────┐
-│   Client    │    │   Controller    │    │    Services       │
-│   Request   │───►│   Validation    │───►│   Conversion      │
+│   Client    │    │   Terraform     │    │  Architecture     │
+│   Request   │───►│   Controller    │───►│    Parser         │
 └─────────────┘    └─────────────────┘    └───────────────────┘
                                                     │
                                                     ▼
 ┌─────────────┐    ┌─────────────────┐    ┌───────────────────┐
-│  Response   │    │   File System   │    │ Terraform         │
-│  Formatting │◄───│   Operations    │◄───│ Generator         │
+│  Terraform  │    │   Module        │    │    Module         │
+│   Response  │◄───│   Generator     │◄───│    Mapper         │
 └─────────────┘    └─────────────────┘    └───────────────────┘
+                            │                       ▲
+                            ▼                       │
+                   ┌─────────────────┐    ┌───────────────────┐
+                   │   File System   │    │    Module         │
+                   │   Operations    │    │   Registry        │
+                   └─────────────────┘    └───────────────────┘
 ```
 
-### 2. Request Processing Pipeline
+### 2. Architecture Processing Pipeline
+
+```
+Architecture Data Input
+     │
+     ▼
+┌─────────────────┐
+│   Validation    │ ─── Check metadata, nodes, connections
+└─────────────────┘
+     │
+     ▼
+┌─────────────────┐
+│    Parsing      │ ─── Extract resources and relationships
+└─────────────────┘
+     │
+     ▼
+┌─────────────────┐
+│   Dependency    │ ─── Analyze resource dependencies
+│    Analysis     │     Detect circular dependencies
+└─────────────────┘
+     │
+     ▼
+┌─────────────────┐
+│    Module       │ ─── Map resources to modules
+│    Mapping      │     Resolve variables
+└─────────────────┘
+     │
+     ▼
+┌─────────────────┐
+│   Topological   │ ─── Order modules by dependencies
+│    Sorting      │     Ensure proper deployment order
+└─────────────────┘
+     │
+     ▼
+┌─────────────────┐
+│   Terraform     │ ─── Generate main.tf, variables.tf, outputs.tf
+│   Generation    │     Apply module templates
+└─────────────────┘
+     │
+     ▼
+┌─────────────────┐
+│    Syntax       │ ─── Validate Terraform syntax
+│   Validation    │     Check for errors
+└─────────────────┘
+     │
+     ▼
+┌─────────────────┐
+│   File Save     │ ─── Save to organized project structure
+│   & Response    │     Return generation results
+└─────────────────┘
+```
+
+### 3. Module Resolution Process
+
+```
+Resource Type Input (e.g., "vpc")
+     │
+     ▼
+┌─────────────────┐
+│   Module        │ ─── Search registry by resource type
+│  Discovery      │     Check category mapping
+└─────────────────┘
+     │
+     ▼
+┌─────────────────┐
+│   Module        │ ─── Load module metadata
+│   Loading       │     Parse variable schema
+└─────────────────┘
+     │
+     ▼
+┌─────────────────┐
+│  Configuration  │ ─── Map architecture config to module variables
+│   Mapping       │     Apply default values
+└─────────────────┘
+     │
+     ▼
+┌─────────────────┐
+│   Validation    │ ─── Validate configuration against schema
+│                 │     Check required variables
+└─────────────────┘
+     │
+     ▼
+┌─────────────────┐
+│   Dependency    │ ─── Check module dependencies
+│   Resolution    │     Ensure required modules are available
+└─────────────────┘
+```
+
+### 4. Request Processing Pipeline
 
 ```
 HTTP Request
@@ -257,18 +676,79 @@ HTTP Request
      │
      ▼
 ┌─────────────────┐
-│   Validation    │
+│  Controller     │
+│   Execution     │
 └─────────────────┘
      │
      ▼
 ┌─────────────────┐
-│   Controller    │
+│   Service       │
+│   Processing    │
 └─────────────────┘
      │
      ▼
 ┌─────────────────┐
-│    Service      │
+│   Response      │
+│  Generation     │
 └─────────────────┘
+```
+
+## Technical Specifications
+
+### Performance Characteristics
+
+- **Module Loading**: Cached in memory for fast access
+- **Dependency Resolution**: O(n log n) complexity using topological sorting
+- **Template Processing**: Handlebars compilation with caching
+- **File Operations**: Asynchronous I/O with proper error handling
+- **Memory Usage**: Efficient module registry caching
+
+### Error Handling Strategy
+
+1. **Input Validation**: Comprehensive schema validation
+2. **Module Errors**: Graceful degradation with fallbacks
+3. **File System Errors**: Proper cleanup and rollback
+4. **Network Errors**: Retry logic with exponential backoff
+5. **Template Errors**: Clear error messages with context
+
+### Security Considerations
+
+- **Input Sanitization**: Strict validation of all inputs
+- **File System Security**: Restricted file access patterns
+- **Template Security**: Safe compilation and execution
+- **Dependency Security**: Module integrity verification
+
+### Scalability Design
+
+- **Horizontal Scaling**: Stateless controller design
+- **Caching Strategy**: Multi-level caching for performance
+- **Resource Management**: Efficient memory and CPU usage
+- **Concurrent Processing**: Thread-safe operations
+
+## Extension Points
+
+### Adding New Modules
+
+1. Create module template in `src/templates/modules/`
+2. Add metadata in `src/modules/registry/`
+3. Update category mappings
+4. Add validation schemas
+
+### Custom Providers
+
+1. Implement provider interface
+2. Register in module registry
+3. Add provider-specific templates
+4. Update documentation
+
+### Architecture Parsers
+
+1. Implement parser interface
+2. Add format-specific validation
+3. Register in parsing pipeline
+4. Update supported formats
+
+This architecture provides a robust, scalable foundation for modular Terraform generation with comprehensive validation, dependency management, and extensibility.
      │
      ▼
 ┌─────────────────┐
@@ -284,7 +764,7 @@ HTTP Request
 
 ### 2. AST-based Terraform Generation
 - **Reason**: More reliable than template-based generation
-- **Benefits**: 
+- **Benefits**:
   - Syntax-aware generation
   - Better error handling
   - Easier to extend and maintain

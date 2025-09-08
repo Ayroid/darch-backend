@@ -1,12 +1,22 @@
 # API Documentation
 
-This document provides detailed information about the Darch Backend REST API endpoints.
+This document provides comprehensive information about the Darch Backend Modular Terraform API endpoints.
 
 ## Base URL
 
 ```
 http://localhost:5000
 ```
+
+## Overview
+
+The Darch Backend API provides enterprise-grade modular Terraform generation capabilities with:
+
+- **Modular Architecture**: Generate organized, reusable Terraform modules
+- **Dependency Resolution**: Automatic dependency ordering and validation
+- **Architecture Validation**: Comprehensive validation with best practices checking
+- **Module Registry**: Extensive library of validated Terraform modules
+- **Cost Estimation**: Resource planning with cost previews
 
 ## Authentication
 
@@ -36,6 +46,8 @@ All API responses follow a consistent format:
 }
 ```
 
+---
+
 ## Endpoints
 
 ### Health Check
@@ -58,9 +70,11 @@ Check if the server is running and healthy.
 
 ---
 
-### Generate Terraform from Architecture Data
+## 🏗️ Terraform Generation
 
-Generate Terraform configuration from structured architecture data.
+### Generate Modular Terraform
+
+Generate enterprise-grade modular Terraform configuration with automatic dependency resolution.
 
 **Endpoint:** `POST /api/generate-terraform`
 
@@ -74,47 +88,31 @@ Generate Terraform configuration from structured architecture data.
       "name": "string (required)",
       "description": "string (optional)",
       "version": "string (required)",
-      "createdAt": "string (ISO date, required)",
-      "lastModified": "string (ISO date, required)",
-      "provider": "string (required, e.g., 'aws')"
+      "provider": "string (required, e.g., 'aws')",
+      "region": "string (required, e.g., 'us-east-1')"
     },
     "nodes": [
       {
         "id": "string (required, unique)",
-        "nodeType": "string (required, 'awsService' | 'awsContainer')",
-        "resourceType": "string (required, e.g., 'ec2', 'vpc', 's3')",
         "name": "string (required)",
-        "icon": "string (required)",
+        "resourceType": "string (required, e.g., 'vpc', 'ec2', 's3')",
         "position": {
           "x": "number (required)",
           "y": "number (required)"
         },
-        "dimensions": {
-          "width": "number (optional)",
-          "height": "number (optional)"
-        },
         "configuration": {
           // Resource-specific configuration
-        },
-        "parentId": "string (optional)"
+        }
       }
     ],
     "connections": [
       {
         "id": "string (required, unique)",
-        "source": "string (required, node ID)",
-        "target": "string (required, node ID)",
-        "sourceHandle": "string (optional)",
-        "targetHandle": "string (optional)",
-        "type": "string (optional)"
+        "sourceId": "string (required, node ID)",
+        "targetId": "string (required, node ID)",
+        "connectionType": "string (required, e.g., 'contains', 'hosts')"
       }
-    ],
-    "variables": {
-      // Optional Terraform variables
-    },
-    "outputs": {
-      // Optional Terraform outputs
-    }
+    ]
   },
   "projectName": "string (optional, default: 'infrastructure')"
 }
@@ -125,56 +123,63 @@ Generate Terraform configuration from structured architecture data.
 {
   "architectureData": {
     "metadata": {
-      "name": "web-application",
-      "description": "Simple web application infrastructure",
+      "name": "production-infrastructure",
+      "description": "Production AWS infrastructure",
       "version": "1.0.0",
-      "createdAt": "2025-09-07T10:30:00.000Z",
-      "lastModified": "2025-09-07T10:30:00.000Z",
-      "provider": "aws"
+      "provider": "aws",
+      "region": "us-east-1"
     },
     "nodes": [
       {
-        "id": "node-1",
-        "nodeType": "awsService",
-        "resourceType": "ec2",
-        "name": "web-server",
-        "icon": "ec2-icon",
+        "id": "vpc-1",
+        "name": "Main VPC",
+        "resourceType": "vpc",
         "position": { "x": 100, "y": 100 },
         "configuration": {
-          "ami": "ami-0c02fb55956c7d316",
-          "instance_type": "t3.micro",
-          "associate_public_ip_address": true
+          "cidr_block": "10.0.0.0/16",
+          "enable_dns_hostnames": true,
+          "enable_dns_support": true
         }
       },
       {
-        "id": "node-2",
-        "nodeType": "awsService",
-        "resourceType": "security-group",
-        "name": "web-sg",
-        "icon": "sg-icon",
-        "position": { "x": 300, "y": 100 },
+        "id": "subnet-1",
+        "name": "Public Subnet",
+        "resourceType": "subnet",
+        "position": { "x": 200, "y": 150 },
         "configuration": {
-          "description": "Security group for web server",
-          "ingress": [
-            {
-              "from_port": 80,
-              "to_port": 80,
-              "protocol": "tcp",
-              "cidr_blocks": ["0.0.0.0/0"]
-            }
-          ]
+          "cidr_block": "10.0.1.0/24",
+          "availability_zone": "us-east-1a",
+          "map_public_ip_on_launch": true
+        }
+      },
+      {
+        "id": "ec2-1",
+        "name": "Web Server",
+        "resourceType": "ec2",
+        "position": { "x": 300, "y": 200 },
+        "configuration": {
+          "ami": "ami-0c02fb55956c7d316",
+          "instance_type": "t3.micro",
+          "key_name": "my-key-pair"
         }
       }
     ],
     "connections": [
       {
         "id": "conn-1",
-        "source": "node-1",
-        "target": "node-2"
+        "sourceId": "vpc-1",
+        "targetId": "subnet-1",
+        "connectionType": "contains"
+      },
+      {
+        "id": "conn-2",
+        "sourceId": "subnet-1",
+        "targetId": "ec2-1",
+        "connectionType": "hosts"
       }
     ]
   },
-  "projectName": "web-app"
+  "projectName": "production-infra"
 }
 ```
 
@@ -183,13 +188,47 @@ Generate Terraform configuration from structured architecture data.
 {
   "success": true,
   "data": {
-    "terraformCode": "# Generated Terraform Configuration\n\nprovider \"aws\" {\n  region = \"us-east-1\"\n}\n\n...",
-    "filename": "web-app-2025-09-07T10-30-00-000Z.tf",
-    "outputPath": "src/output/web-app-2025-09-07T10-30-00-000Z.tf",
-    "generatedAt": "2025-09-07T10:30:00.000Z"
+    "terraformConfiguration": {
+      "mainTf": "# Generated Terraform Configuration...",
+      "variablesTf": "# Variables Configuration...",
+      "outputsTf": "# Outputs Configuration...",
+      "files": [
+        {
+          "filename": "main.tf",
+          "content": "# Main Terraform configuration..."
+        },
+        {
+          "filename": "variables.tf",
+          "content": "# Variable definitions..."
+        },
+        {
+          "filename": "outputs.tf",
+          "content": "# Output definitions..."
+        }
+      ]
+    },
+    "savedFiles": {
+      "projectDir": "src/output/production-infra-2025-09-07T10-30-00-000Z",
+      "files": ["main.tf", "variables.tf", "outputs.tf"]
+    },
+    "validation": {
+      "syntaxValid": true,
+      "errors": [],
+      "warnings": []
+    },
+    "architectureValidation": {
+      "valid": true,
+      "errors": [],
+      "warnings": []
+    },
+    "moduleMapping": {
+      "modulesGenerated": 3,
+      "dependencies": 2,
+      "warnings": []
+    },
+    "projectName": "production-infra"
   },
-  "message": "Terraform configuration generated successfully",
-  "timestamp": "2025-09-07T10:30:00.000Z"
+  "message": "Modular Terraform configuration generated successfully"
 }
 ```
 
@@ -200,51 +239,231 @@ Generate Terraform configuration from structured architecture data.
 
 ---
 
-### Generate Terraform from Raw Config
+### Generate Terraform Plan Preview
 
-Generate Terraform from raw JSON configuration (for testing and legacy support).
+Generate a preview of resources and estimated costs before deployment.
 
-**Endpoint:** `POST /api/generate-terraform-raw`
+**Endpoint:** `POST /api/terraform/plan`
+
+**Content-Type:** `application/json`
+
+**Request Body:** Same as `/api/generate-terraform`
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "resourceSummary": {
+      "totalResources": 3,
+      "resourceTypes": {
+        "vpc": 1,
+        "subnet": 1,
+        "ec2": 1
+      },
+      "modules": 3
+    },
+    "costEstimate": {
+      "monthlyEstimate": 15,
+      "breakdown": {
+        "vpc": 0,
+        "subnet": 0,
+        "ec2": 15
+      },
+      "currency": "USD",
+      "disclaimer": "This is a rough estimate. Actual costs may vary based on usage and AWS pricing changes."
+    },
+    "modules": [
+      {
+        "name": "vpc-1",
+        "source": "./terraform-modules/networking/vpc",
+        "variableCount": 3
+      }
+    ],
+    "dependencies": 2,
+    "warnings": []
+  },
+  "message": "Terraform plan preview generated"
+}
+```
+
+**Status Codes:**
+- `200` - Success
+- `400` - Invalid request body
+- `500` - Server error
+
+---
+
+## 📦 Module Management
+
+### Get Available Modules
+
+List all available Terraform modules in the registry.
+
+**Endpoint:** `GET /api/modules`
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "modules": [
+      {
+        "name": "vpc",
+        "category": "networking",
+        "version": "1.0.0",
+        "description": "AWS VPC with configurable CIDR and DNS settings",
+        "variables": ["cidr_block", "enable_dns_hostnames", "enable_dns_support"],
+        "outputs": ["vpc_id", "vpc_cidr_block"],
+        "path": "./terraform-modules/networking/vpc"
+      },
+      {
+        "name": "subnet",
+        "category": "networking",
+        "version": "1.0.0",
+        "description": "AWS subnet with availability zone and routing configuration",
+        "variables": ["vpc_id", "cidr_block", "availability_zone"],
+        "outputs": ["subnet_id", "subnet_arn"],
+        "path": "./terraform-modules/networking/subnet"
+      }
+    ],
+    "modulesByCategory": {
+      "networking": [
+        {
+          "name": "vpc",
+          "version": "1.0.0",
+          "description": "AWS VPC with configurable CIDR and DNS settings"
+        },
+        {
+          "name": "subnet",
+          "version": "1.0.0",
+          "description": "AWS subnet with availability zone and routing configuration"
+        }
+      ],
+      "compute": [
+        {
+          "name": "ec2",
+          "version": "1.0.0",
+          "description": "AWS EC2 instance with security group integration"
+        }
+      ],
+      "security": [
+        {
+          "name": "security-group",
+          "version": "1.0.0",
+          "description": "AWS security group with ingress/egress rules"
+        }
+      ],
+      "storage": [
+        {
+          "name": "s3",
+          "version": "1.0.0",
+          "description": "AWS S3 bucket with versioning and encryption"
+        }
+      ]
+    },
+    "totalModules": 12,
+    "categories": ["networking", "compute", "security", "storage"]
+  },
+  "message": "Available modules retrieved successfully"
+}
+```
+
+**Status Codes:**
+- `200` - Success
+- `500` - Server error
+
+---
+
+### Get Module Details
+
+Get detailed information about a specific module.
+
+**Endpoint:** `GET /api/modules/:category/:name`
+
+**Parameters:**
+- `category` (required): Module category (e.g., "networking", "compute")
+- `name` (required): Module name (e.g., "vpc", "ec2")
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "module": {
+      "name": "vpc",
+      "category": "networking",
+      "version": "1.0.0",
+      "description": "AWS VPC with configurable CIDR and DNS settings",
+      "variables": [
+        {
+          "name": "cidr_block",
+          "type": "string",
+          "description": "CIDR block for the VPC",
+          "required": true
+        },
+        {
+          "name": "enable_dns_hostnames",
+          "type": "bool",
+          "description": "Enable DNS hostnames",
+          "required": false,
+          "default": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "vpc_id",
+          "description": "ID of the VPC"
+        },
+        {
+          "name": "vpc_cidr_block",
+          "description": "CIDR block of the VPC"
+        }
+      ],
+      "path": "./terraform-modules/networking/vpc"
+    },
+    "metadata": {
+      "author": "Darch Team",
+      "createdAt": "2025-09-07T10:30:00.000Z",
+      "lastModified": "2025-09-07T10:30:00.000Z",
+      "documentation": "https://docs.darch.dev/modules/vpc",
+      "examples": [
+        {
+          "name": "Basic VPC",
+          "description": "Simple VPC with default settings",
+          "configuration": {
+            "cidr_block": "10.0.0.0/16"
+          }
+        }
+      ]
+    }
+  },
+  "message": "Module details retrieved successfully"
+}
+```
+
+**Status Codes:**
+- `200` - Success
+- `404` - Module not found
+- `500` - Server error
+
+---
+
+### Validate Module Configuration
+
+Validate a module configuration before using it.
+
+**Endpoint:** `POST /api/modules/validate`
 
 **Content-Type:** `application/json`
 
 **Request Body:**
 ```json
 {
-  "provider": {
-    "aws": {
-      "region": "string (required)"
-    }
-  },
-  "variable": {
-    "variable_name": {
-      "description": "string (optional)",
-      "type": "string (optional)",
-      "default": "any (optional)"
-    }
-  },
-  "locals": {
-    "local_name": "any"
-  },
-  "data": {
-    "data_source_type": {
-      "data_source_name": {
-        // Data source configuration
-      }
-    }
-  },
-  "resource": {
-    "resource_type": {
-      "resource_name": {
-        // Resource configuration
-      }
-    }
-  },
-  "output": {
-    "output_name": {
-      "description": "string (optional)",
-      "value": "string (required)"
-    }
+  "category": "string (required)",
+  "name": "string (required)",
+  "configuration": {
+    // Module-specific configuration
   }
 }
 ```
@@ -252,81 +471,201 @@ Generate Terraform from raw JSON configuration (for testing and legacy support).
 **Example Request:**
 ```json
 {
-  "provider": {
-    "aws": {
-      "region": "us-east-1"
-    }
-  },
-  "variable": {
-    "environment": {
-      "description": "Environment name",
-      "type": "string",
-      "default": "dev"
-    }
-  },
-  "resource": {
-    "aws_instance": {
-      "web_server": {
-        "ami": "ami-0c02fb55956c7d316",
-        "instance_type": "t3.micro",
-        "tags": {
-          "Name": "WebServer",
-          "Environment": "var.environment"
-        }
-      }
-    },
-    "aws_security_group": {
-      "web_sg": {
-        "name": "web-security-group",
-        "description": "Security group for web server",
-        "ingress": [
-          {
-            "from_port": 80,
-            "to_port": 80,
-            "protocol": "tcp",
-            "cidr_blocks": ["0.0.0.0/0"]
-          }
-        ]
-      }
-    }
-  },
-  "output": {
-    "instance_public_ip": {
-      "description": "Public IP of the web server",
-      "value": "aws_instance.web_server.public_ip"
-    }
+  "category": "networking",
+  "name": "vpc",
+  "configuration": {
+    "cidr_block": "10.0.0.0/16",
+    "enable_dns_hostnames": true,
+    "enable_dns_support": true
   }
 }
 ```
-
-**Query Parameters:**
-- `projectName` (optional): Name for the generated file (default: "infrastructure")
 
 **Response:**
 ```json
 {
   "success": true,
   "data": {
-    "terraformCode": "# Generated Terraform Configuration\n\nprovider \"aws\" {\n  region = \"us-east-1\"\n}\n\n...",
-    "filename": "infrastructure-2025-09-07T10-30-00-000Z.tf",
-    "outputPath": "src/output/infrastructure-2025-09-07T10-30-00-000Z.tf",
-    "generatedAt": "2025-09-07T10:30:00.000Z"
+    "validation": {
+      "valid": true,
+      "errors": [],
+      "warnings": []
+    },
+    "module": "networking/vpc",
+    "configuration": {
+      "cidr_block": "10.0.0.0/16",
+      "enable_dns_hostnames": true,
+      "enable_dns_support": true
+    }
   },
-  "message": "Terraform configuration generated successfully",
-  "timestamp": "2025-09-07T10:30:00.000Z"
+  "message": "Module configuration validation completed"
 }
 ```
 
 **Status Codes:**
 - `200` - Success
-- `400` - Invalid JSON configuration
+- `400` - Invalid configuration
+- `404` - Module not found
 - `500` - Server error
 
 ---
 
+### Refresh Module Registry
+
+Refresh the module registry to load new or updated modules.
+
+**Endpoint:** `POST /api/modules/refresh`
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "modulesLoaded": 12,
+    "categories": ["networking", "compute", "security", "storage"]
+  },
+  "message": "Module registry refreshed successfully"
+}
+```
+
+**Status Codes:**
+- `200` - Success
+- `500` - Server error
+
+---
+
+## 🔍 Architecture Validation
+
+### Validate Architecture Design
+
+Validate the overall architecture design for best practices and compatibility.
+
+**Endpoint:** `POST /api/validate/architecture`
+
+**Content-Type:** `application/json`
+
+**Request Body:**
+```json
+{
+  "architectureData": {
+    // Same structure as generate-terraform
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "validation": {
+      "valid": true,
+      "errors": [],
+      "warnings": [
+        {
+          "type": "security_warning",
+          "message": "Public subnet detected without NAT gateway",
+          "severity": "medium",
+          "nodeId": "subnet-1"
+        }
+      ]
+    },
+    "nodes": 3,
+    "connections": 2,
+    "metadata": {
+      "name": "production-infrastructure",
+      "provider": "aws",
+      "region": "us-east-1"
+    }
+  },
+  "message": "Architecture validation completed"
+}
+```
+
+**Status Codes:**
+- `200` - Success
+- `400` - Invalid architecture data
+- `500` - Server error
+
+---
+
+### Validate Dependencies
+
+Validate resource dependencies and detect circular dependencies.
+
+**Endpoint:** `POST /api/validate/dependencies`
+
+**Content-Type:** `application/json`
+
+**Request Body:**
+```json
+{
+  "architectureData": {
+    // Same structure as generate-terraform
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "dependencyGraph": {
+      "nodes": [
+        {
+          "id": "vpc-1",
+          "name": "Main VPC",
+          "type": "vpc",
+          "module": "networking/vpc",
+          "level": 0
+        },
+        {
+          "id": "subnet-1",
+          "name": "Public Subnet",
+          "type": "subnet",
+          "module": "networking/subnet",
+          "level": 1
+        }
+      ],
+      "edges": [
+        {
+          "source": "vpc-1",
+          "target": "subnet-1",
+          "type": "dependency"
+        }
+      ]
+    },
+    "circularDependencies": [],
+    "dependencyLevels": [
+      {
+        "module": "vpc-1",
+        "level": 0,
+        "dependsOn": []
+      },
+      {
+        "module": "subnet-1",
+        "level": 1,
+        "dependsOn": ["vpc-1"]
+      }
+    ]
+  },
+  "message": "Dependency validation completed"
+}
+```
+
+**Status Codes:**
+- `200` - Success
+- `400` - Invalid architecture data
+- `500` - Server error
+
+---
+
+## 📁 File Management
+
 ### List Terraform Files
 
-Get a list of all generated Terraform files.
+Get list of all generated Terraform projects.
 
 **Endpoint:** `GET /api/terraform-files`
 
@@ -337,22 +676,21 @@ Get a list of all generated Terraform files.
   "data": {
     "files": [
       {
-        "name": "web-app-2025-09-07T10-30-00-000Z.tf",
-        "path": "src/output/web-app-2025-09-07T10-30-00-000Z.tf",
-        "size": 1024,
+        "name": "main.tf",
+        "path": "src/output/production-infra-2025-09-07T10-30-00-000Z/main.tf",
+        "size": 2048,
         "createdAt": "2025-09-07T10:30:00.000Z",
         "modifiedAt": "2025-09-07T10:30:00.000Z"
       },
       {
-        "name": "infrastructure-2025-09-07T09-15-30-000Z.tf",
-        "path": "src/output/infrastructure-2025-09-07T09-15-30-000Z.tf",
-        "size": 2048,
-        "createdAt": "2025-09-07T09:15:30.000Z",
-        "modifiedAt": "2025-09-07T09:15:30.000Z"
+        "name": "variables.tf",
+        "path": "src/output/production-infra-2025-09-07T10-30-00-000Z/variables.tf",
+        "size": 512,
+        "createdAt": "2025-09-07T10:30:00.000Z",
+        "modifiedAt": "2025-09-07T10:30:00.000Z"
       }
     ]
-  },
-  "timestamp": "2025-09-07T10:30:00.000Z"
+  }
 }
 ```
 
@@ -376,11 +714,9 @@ Get the content of a specific Terraform file.
 {
   "success": true,
   "data": {
-    "filename": "web-app-2025-09-07T10-30-00-000Z.tf",
-    "content": "# Generated Terraform Configuration\n\nprovider \"aws\" {\n  region = \"us-east-1\"\n}\n\n...",
-    "downloadUrl": "/api/terraform-files/web-app-2025-09-07T10-30-00-000Z.tf/download"
-  },
-  "timestamp": "2025-09-07T10:30:00.000Z"
+    "filename": "main.tf",
+    "content": "# Generated Terraform Configuration\n\nprovider \"aws\" {\n  region = \"us-east-1\"\n}\n\n..."
+  }
 }
 ```
 
@@ -410,149 +746,245 @@ The file will be downloaded as an attachment with the appropriate headers.
 - `404` - File not found
 - `500` - Server error
 
+---
+
 ## Resource Type Mapping
 
-When using the structured architecture data, the following resource types are automatically mapped:
+The system supports the following resource types with automatic module mapping:
 
-| Frontend Type | Terraform Resource |
-|---------------|-------------------|
-| `ec2`, `aws-ec2`, `instance` | `aws_instance` |
-| `vpc`, `aws-vpc` | `aws_vpc` |
-| `subnet`, `aws-subnet` | `aws_subnet` |
-| `s3`, `aws-s3`, `bucket` | `aws_s3_bucket` |
-| `rds`, `aws-rds`, `database` | `aws_db_instance` |
-| `lambda`, `aws-lambda`, `function` | `aws_lambda_function` |
-| `alb`, `aws-alb`, `load-balancer`, `elb` | `aws_lb` |
-| `security-group`, `aws-security-group`, `sg` | `aws_security_group` |
-| `iam-role`, `aws-iam-role`, `role` | `aws_iam_role` |
+### Networking
+| Resource Type | Terraform Module | AWS Resource |
+|---------------|------------------|--------------|
+| `vpc` | `networking/vpc` | `aws_vpc` |
+| `subnet` | `networking/subnet` | `aws_subnet` |
+| `internet-gateway` | `networking/internet-gateway` | `aws_internet_gateway` |
+| `nat-gateway` | `networking/nat-gateway` | `aws_nat_gateway` |
+
+### Compute
+| Resource Type | Terraform Module | AWS Resource |
+|---------------|------------------|--------------|
+| `ec2` | `compute/ec2` | `aws_instance` |
+| `auto-scaling-group` | `compute/auto-scaling` | `aws_autoscaling_group` |
+| `load-balancer` | `compute/load-balancer` | `aws_lb` |
+
+### Security
+| Resource Type | Terraform Module | AWS Resource |
+|---------------|------------------|--------------|
+| `security-group` | `security/security-group` | `aws_security_group` |
+| `iam-role` | `security/iam-role` | `aws_iam_role` |
+| `key-pair` | `security/key-pair` | `aws_key_pair` |
+
+### Storage
+| Resource Type | Terraform Module | AWS Resource |
+|---------------|------------------|--------------|
+| `s3` | `storage/s3` | `aws_s3_bucket` |
+| `ebs` | `storage/ebs` | `aws_ebs_volume` |
+
+---
 
 ## Error Codes
 
 ### Validation Errors (400)
-
 - Missing required fields in request body
 - Invalid architecture data structure
-- Invalid filename format
-- Invalid JSON configuration
+- Invalid module configuration
+- Circular dependencies detected
 
 ### Not Found Errors (404)
-
 - Terraform file not found
+- Module not found
 - Invalid API endpoint
 
 ### Server Errors (500)
-
 - Terraform generation failure
+- Module registry errors
 - File system errors
 - Unexpected server errors
 
-## Rate Limiting
-
-Currently, there are no rate limits applied. This may be added in future versions for production deployments.
-
-## CORS
-
-CORS is enabled for all origins in development mode. For production, configure the `CORS_ORIGIN` environment variable.
+---
 
 ## Examples
 
 ### Complete Workflow Example
 
-1. **Generate Terraform from architecture data:**
+1. **List available modules:**
+```bash
+curl http://localhost:5000/api/modules
+```
+
+2. **Validate architecture:**
+```bash
+curl -X POST http://localhost:5000/api/validate/architecture \
+  -H "Content-Type: application/json" \
+  -d '{
+    "architectureData": {
+      "metadata": {
+        "name": "test-infra",
+        "version": "1.0.0",
+        "provider": "aws",
+        "region": "us-east-1"
+      },
+      "nodes": [
+        {
+          "id": "vpc-1",
+          "name": "Main VPC",
+          "resourceType": "vpc",
+          "position": {"x": 100, "y": 100},
+          "configuration": {
+            "cidr_block": "10.0.0.0/16"
+          }
+        }
+      ],
+      "connections": []
+    }
+  }'
+```
+
+3. **Generate Terraform plan preview:**
+```bash
+curl -X POST http://localhost:5000/api/terraform/plan \
+  -H "Content-Type: application/json" \
+  -d '{
+    "architectureData": {
+      "metadata": {
+        "name": "test-infra",
+        "version": "1.0.0",
+        "provider": "aws",
+        "region": "us-east-1"
+      },
+      "nodes": [
+        {
+          "id": "vpc-1",
+          "name": "Main VPC",
+          "resourceType": "vpc",
+          "position": {"x": 100, "y": 100},
+          "configuration": {
+            "cidr_block": "10.0.0.0/16"
+          }
+        }
+      ],
+      "connections": []
+    }
+  }'
+```
+
+4. **Generate modular Terraform:**
 ```bash
 curl -X POST http://localhost:5000/api/generate-terraform \
   -H "Content-Type: application/json" \
   -d '{
     "architectureData": {
       "metadata": {
-        "name": "web-app",
+        "name": "production-infra",
         "version": "1.0.0",
-        "createdAt": "2025-09-07T10:30:00.000Z",
-        "lastModified": "2025-09-07T10:30:00.000Z",
-        "provider": "aws"
+        "provider": "aws",
+        "region": "us-east-1"
       },
       "nodes": [
         {
-          "id": "web-server",
-          "nodeType": "awsService",
-          "resourceType": "ec2",
-          "name": "web-server",
-          "icon": "ec2",
+          "id": "vpc-1",
+          "name": "Main VPC",
+          "resourceType": "vpc",
           "position": {"x": 100, "y": 100},
           "configuration": {
-            "ami": "ami-0c02fb55956c7d316",
-            "instance_type": "t3.micro"
+            "cidr_block": "10.0.0.0/16",
+            "enable_dns_hostnames": true
           }
         }
       ],
       "connections": []
     },
-    "projectName": "my-web-app"
+    "projectName": "my-infrastructure"
   }'
 ```
 
-2. **List generated files:**
+5. **List generated files:**
 ```bash
 curl http://localhost:5000/api/terraform-files
 ```
 
-3. **Get file content:**
-```bash
-curl http://localhost:5000/api/terraform-files/my-web-app-2025-09-07T10-30-00-000Z.tf
-```
-
-4. **Download file:**
-```bash
-curl -o terraform-config.tf http://localhost:5000/api/terraform-files/my-web-app-2025-09-07T10-30-00-000Z.tf/download
-```
+---
 
 ## SDK Examples
 
-### JavaScript/TypeScript
+### TypeScript Client
 
 ```typescript
+interface ArchitectureData {
+  metadata: {
+    name: string;
+    version: string;
+    provider: string;
+    region: string;
+  };
+  nodes: Array<{
+    id: string;
+    name: string;
+    resourceType: string;
+    position: { x: number; y: number };
+    configuration: Record<string, any>;
+  }>;
+  connections: Array<{
+    id: string;
+    sourceId: string;
+    targetId: string;
+    connectionType: string;
+  }>;
+}
+
 class DarchBackendClient {
   constructor(private baseUrl: string = 'http://localhost:5000') {}
 
-  async generateTerraform(architectureData: any, projectName?: string) {
+  async generateTerraform(architectureData: ArchitectureData, projectName?: string) {
     const response = await fetch(`${this.baseUrl}/api/generate-terraform`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ architectureData, projectName }),
     });
     return response.json();
   }
 
-  async listFiles() {
-    const response = await fetch(`${this.baseUrl}/api/terraform-files`);
+  async generatePlan(architectureData: ArchitectureData) {
+    const response = await fetch(`${this.baseUrl}/api/terraform/plan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ architectureData }),
+    });
     return response.json();
   }
 
-  async getFileContent(filename: string) {
-    const response = await fetch(`${this.baseUrl}/api/terraform-files/${filename}`);
+  async validateArchitecture(architectureData: ArchitectureData) {
+    const response = await fetch(`${this.baseUrl}/api/validate/architecture`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ architectureData }),
+    });
     return response.json();
   }
 
-  async downloadFile(filename: string) {
-    const response = await fetch(`${this.baseUrl}/api/terraform-files/${filename}/download`);
-    return response.blob();
+  async getModules() {
+    const response = await fetch(`${this.baseUrl}/api/modules`);
+    return response.json();
+  }
+
+  async getModuleDetails(category: string, name: string) {
+    const response = await fetch(`${this.baseUrl}/api/modules/${category}/${name}`);
+    return response.json();
   }
 }
 ```
 
-### Python
+### Python Client
 
 ```python
 import requests
-import json
+from typing import Dict, List, Optional
 
 class DarchBackendClient:
-    def __init__(self, base_url="http://localhost:5000"):
+    def __init__(self, base_url: str = "http://localhost:5000"):
         self.base_url = base_url
 
-    def generate_terraform(self, architecture_data, project_name=None):
+    def generate_terraform(self, architecture_data: Dict, project_name: Optional[str] = None):
         payload = {
             "architectureData": architecture_data,
             "projectName": project_name
@@ -563,15 +995,27 @@ class DarchBackendClient:
         )
         return response.json()
 
-    def list_files(self):
-        response = requests.get(f"{self.base_url}/api/terraform-files")
+    def generate_plan(self, architecture_data: Dict):
+        payload = {"architectureData": architecture_data}
+        response = requests.post(
+            f"{self.base_url}/api/terraform/plan",
+            json=payload
+        )
         return response.json()
 
-    def get_file_content(self, filename):
-        response = requests.get(f"{self.base_url}/api/terraform-files/{filename}")
+    def validate_architecture(self, architecture_data: Dict):
+        payload = {"architectureData": architecture_data}
+        response = requests.post(
+            f"{self.base_url}/api/validate/architecture",
+            json=payload
+        )
         return response.json()
 
-    def download_file(self, filename):
-        response = requests.get(f"{self.base_url}/api/terraform-files/{filename}/download")
-        return response.content
+    def get_modules(self):
+        response = requests.get(f"{self.base_url}/api/modules")
+        return response.json()
+
+    def get_module_details(self, category: str, name: str):
+        response = requests.get(f"{self.base_url}/api/modules/{category}/{name}")
+        return response.json()
 ```

@@ -1,20 +1,11 @@
-import { 
-  CleanArchitectureData, 
-  ProjectMetadata, 
+import {
+  CleanArchitectureData,
+  ProjectMetadata,
   InfrastructureSpec,
   NetworkConfiguration,
   ComputeConfiguration,
-  SecurityConfigurat  /**
-   * Filter out container nodes that are not actual infrastructure resources
-   */
-  private static filterInfrastructureNodes(nodes: ArchitectureNode[]): ArchitectureNode[] {
-    // Remove container types - both old verbose format and potential new format
-    const containerTypes = [
-      'aws-region', 'aws-availability-zone', 'region-container', 'az-container',
-      'region', 'availability-zone', 'az'  // Add support for cleaner format
-    ];
-    return nodes.filter(node => !containerTypes.includes(node.resourceType.toLowerCase()));
-  }ResourceDependency 
+  SecurityConfiguration,
+  ResourceDependency
 } from '../models/CleanArchitecture.js';
 import { ArchitectureData, ArchitectureNode, NodeConnection } from '../models/Architecture.js';
 
@@ -28,7 +19,7 @@ export class ArchitectureConverterService {
    */
   static convertFromLegacy(legacyData: ArchitectureData): CleanArchitectureData {
     console.log('🔄 Converting from legacy format to clean format...');
-    
+
     const cleanData: CleanArchitectureData = {
       metadata: this.convertMetadata(legacyData.metadata, legacyData.nodes || []),
       infrastructure: this.convertInfrastructure(legacyData.nodes || []),
@@ -44,7 +35,7 @@ export class ArchitectureConverterService {
    */
   private static convertVariables(variables: any): Record<string, any> {
     const result: Record<string, any> = {};
-    
+
     Object.entries(variables).forEach(([key, value]: [string, any]) => {
       if (typeof value === 'object' && value !== null) {
         result[key] = {
@@ -60,21 +51,8 @@ export class ArchitectureConverterService {
         };
       }
     });
-    
+
     return result;
-  }
-
-  /**
-   * Convert dependencies from connectionsm legacy format to clean format...');
-
-    const cleanData: CleanArchitectureData = {
-      metadata: this.convertMetadata(legacyData.metadata, legacyData.nodes),
-      infrastructure: this.convertInfrastructure(legacyData.nodes),
-      deployment: this.convertDeployment(legacyData)
-    };
-
-    console.log('✅ Conversion to clean format completed');
-    return cleanData;
   }
 
   /**
@@ -104,11 +82,11 @@ export class ArchitectureConverterService {
     // Infer provider and region from nodes if not explicitly set
     const regionNode = nodes.find(n => n.resourceType === 'aws-region');
     const vpcNode = nodes.find(n => n.resourceType === 'aws-vpc');
-    
+
     const provider = legacyMetadata?.provider || 'aws';
-    const region = legacyMetadata?.region || 
-                   regionNode?.configuration?.region || 
-                   vpcNode?.configuration?.awsRegionId || 
+    const region = legacyMetadata?.region ||
+                   regionNode?.configuration?.region ||
+                   vpcNode?.configuration?.awsRegionId ||
                    'us-east-1';
 
     return {
@@ -139,7 +117,7 @@ export class ArchitectureConverterService {
   private static convertInfrastructure(nodes: ArchitectureNode[]): InfrastructureSpec {
     // Filter and categorize nodes
     const infrastructureNodes = this.filterInfrastructureNodes(nodes);
-    
+
     const vpcNodes = infrastructureNodes.filter(n => this.isVPCNode(n.resourceType));
     const subnetNodes = infrastructureNodes.filter(n => this.isSubnetNode(n.resourceType));
     const ec2Nodes = infrastructureNodes.filter(n => this.isEC2Node(n.resourceType));
@@ -157,7 +135,10 @@ export class ArchitectureConverterService {
    * Filter out container nodes and keep only infrastructure service nodes
    */
   private static filterInfrastructureNodes(nodes: ArchitectureNode[]): ArchitectureNode[] {
-    const containerTypes = ['aws-region', 'aws-availability-zone', 'region-container', 'az-container'];
+    const containerTypes = [
+      'aws-region', 'aws-availability-zone', 'region-container', 'az-container',
+      'region', 'availability-zone', 'az'  // Add support for cleaner format
+    ];
     return nodes.filter(node => !containerTypes.includes(node.resourceType.toLowerCase()));
   }
 
@@ -251,11 +232,11 @@ export class ArchitectureConverterService {
    * Convert network-related nodes with enhanced configuration mapping
    */
   private static convertNetworkConfiguration(
-    vpcNodes: ArchitectureNode[], 
+    vpcNodes: ArchitectureNode[],
     subnetNodes: ArchitectureNode[]
   ): NetworkConfiguration {
     const vpc = vpcNodes[0]; // Assume single VPC for now
-    
+
     if (!vpc) {
       throw new Error('No VPC found in architecture');
     }
@@ -293,7 +274,7 @@ export class ArchitectureConverterService {
    */
   private static convertSubnetConfiguration(subnet: ArchitectureNode): any {
     const config = subnet.configuration;
-    
+
     // Determine subnet type from resource type or configuration
     let subnetType = 'private';
     if (subnet.resourceType.includes('public') || config.subnet_type === 'public') {
@@ -334,7 +315,7 @@ export class ArchitectureConverterService {
    */
   private static extractTags(tags: any): Record<string, string> | undefined {
     if (!tags) return undefined;
-    
+
     if (typeof tags === 'string') {
       // Handle comma-separated format: "Environment=Development,Type=Public"
       const tagObj: Record<string, string> = {};
@@ -346,11 +327,11 @@ export class ArchitectureConverterService {
       });
       return Object.keys(tagObj).length > 0 ? tagObj : undefined;
     }
-    
+
     if (typeof tags === 'object') {
       return tags as Record<string, string>;
     }
-    
+
     return undefined;
   }
 
@@ -366,24 +347,24 @@ export class ArchitectureConverterService {
   /**
    * Convert EC2 instance configuration with field mapping
    */
-  private static convertEC2Configuration(config: any): any {
+  private static convertEC2Configuration(instance: ArchitectureNode): any {
+    const config = instance.configuration;
+
     return {
-      instance_type: config.instanceType || 't3.micro',
-      ami_id: config.amiId || '',
-      key_name: config.keyPairName || undefined,
-      subnet_id: config.subnetId || '',
-      security_group_ids: config.securityGroups || [],
-      associate_public_ip_address: config.associatePublicIpAddress || false,
-      root_block_device: {
-        volume_type: config.rootVolumeType || 'gp3',
-        volume_size: config.rootVolumeSize || 8,
-        delete_on_termination: config.deleteOnTermination !== false,
-        encrypted: config.encrypted || false
-      },
-      ebs_block_devices: [],
-      monitoring: config.detailedMonitoring || false,
-      disable_api_termination: config.terminationProtection || false,
-      tenancy: config.tenancy || 'default',
+      id: instance.id,
+      name: instance.name,
+      instance_type: config.instance_type || config.instanceType || 't3.micro',
+      ami_id: config.ami_id || config.amiId || '',
+      key_pair: config.key_pair || config.keyPairName || undefined,
+      subnet_id: config.subnet_id || config.subnetId || '',
+      security_group_ids: config.security_group_ids || config.securityGroups || [],
+      associate_public_ip_address: config.associate_public_ip_address ?? config.associatePublicIpAddress ?? false,
+      root_block_device: this.convertBlockDeviceConfiguration(config),
+      ebs_block_devices: config.ebs_block_devices || config.ebs_block_device || [],
+      monitoring: config.monitoring ?? config.detailedMonitoring ?? false,
+      ebs_optimized: config.ebs_optimized ?? false,
+      user_data: config.user_data,
+      iam_instance_profile: config.iam_instance_profile,
       tags: this.convertTags(config.tags || {})
     };
   }
@@ -403,11 +384,11 @@ export class ArchitectureConverterService {
       });
       return result;
     }
-    
+
     if (typeof tags === 'object' && tags !== null) {
       return { ...tags };
     }
-    
+
     return {};
   }
 
@@ -419,7 +400,7 @@ export class ArchitectureConverterService {
     if (config.root_block_device) {
       return config.root_block_device;
     }
-    
+
     // Build from individual fields
     return {
       volume_type: config.rootVolumeType || config.root_volume_type || 'gp3',
@@ -493,7 +474,7 @@ export class ArchitectureConverterService {
       'connects_to': 'connects_to',
       'dependency': 'depends_on'
     };
-    
+
     return mapping[type] || 'depends_on';
   }
 
@@ -521,7 +502,7 @@ export class ArchitectureConverterService {
    * Convert clean infrastructure to legacy nodes
    */
   private static convertNodesToLegacy(
-    infrastructure: InfrastructureSpec, 
+    infrastructure: InfrastructureSpec,
     metadata: ProjectMetadata
   ): ArchitectureNode[] {
     const nodes: ArchitectureNode[] = [];

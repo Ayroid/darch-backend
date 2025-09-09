@@ -32,15 +32,15 @@ export class TerraformController {
 
       // Detect format and convert if necessary
       let processedArchitectureData: ArchitectureData;
-      
-      if (this.isCleanFormat(architectureData)) {
+
+      if (TerraformController.isCleanFormat(architectureData)) {
         console.log('🔄 Detected clean format, converting to legacy format...');
-        
+
         // Validate clean format first
         const cleanValidation = ArchitectureConverterService.validateCleanArchitecture(
           architectureData as CleanArchitectureData
         );
-        
+
         if (!cleanValidation.valid) {
           const errorResponse = ResponseView.error(
             'Clean architecture validation failed',
@@ -49,7 +49,7 @@ export class TerraformController {
           res.status(400).json(errorResponse);
           return;
         }
-        
+
         processedArchitectureData = ArchitectureConverterService.convertToLegacy(
           architectureData as CleanArchitectureData
         );
@@ -108,7 +108,7 @@ export class TerraformController {
           warnings: mappingResult.warnings
         },
         projectName,
-        formatUsed: this.isCleanFormat(architectureData) ? 'clean' : 'legacy'
+        formatUsed: TerraformController.isCleanFormat(architectureData) ? 'clean' : 'legacy'
       }, 'Modular Terraform configuration generated successfully');
 
       res.json(response);
@@ -546,8 +546,8 @@ export class TerraformController {
   private static isCleanFormat(data: any): boolean {
     // Check for clean format structure
     return !!(
-      data.metadata && 
-      data.infrastructure && 
+      data.metadata &&
+      data.infrastructure &&
       data.deployment &&
       data.infrastructure.network &&
       data.infrastructure.compute &&
@@ -603,7 +603,7 @@ export class TerraformController {
       console.log('📋 Generating clean format example...');
 
       const exampleData = ArchitectureConverterService.generateExampleCleanData();
-      
+
       const response = ResponseView.success({
         exampleCleanData: exampleData,
         description: 'Example clean architecture data format',

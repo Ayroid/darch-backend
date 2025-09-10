@@ -12,7 +12,8 @@ export * from './services/CLIService.js';
 export * from './services/ModuleRegistryService.js';
 export * from './services/ArchitectureParserService.js';
 export * from './services/ModuleMapperService.js';
-export { ModularTerraformGeneratorService, TerraformGenerationResult } from './services/ModularTerraformGeneratorService.js';
+export { ModularTerraformGeneratorService } from './services/ModularTerraformGeneratorService.js';
+export type { TerraformGenerationResult } from './services/ModularTerraformGeneratorService.js';
 
 // Views
 export * from './views/ResponseView.js';

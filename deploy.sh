@@ -11,8 +11,9 @@ CONTAINER_NAME="darch-backend-api"
 PORT="5000"
 OUTPUT_DIR="$(pwd)/src/output"
 
-# Ensure output directory exists
+# Ensure output directory exists with proper permissions
 mkdir -p "$OUTPUT_DIR"
+chmod 755 "$OUTPUT_DIR"
 
 # Build the production image
 echo "📦 Building production Docker image..."
@@ -28,12 +29,18 @@ echo "🏃 Starting production container..."
 docker run -d \
   --name $CONTAINER_NAME \
   -p $PORT:5000 \
-  -v "$OUTPUT_DIR:/app/src/output" \
+  -v "$OUTPUT_DIR:/app/src/output:rw" \
   -e NODE_ENV=production \
   -e PORT=5000 \
   -e API_HOST=0.0.0.0 \
   --restart unless-stopped \
+  --user root \
   $IMAGE_NAME
+
+# Fix permissions inside container
+echo "🔧 Fixing output directory permissions..."
+docker exec $CONTAINER_NAME chown -R darch:nodejs /app/src/output
+docker exec $CONTAINER_NAME chmod -R 755 /app/src/output
 
 # Wait for service to be healthy
 echo "⏳ Waiting for service to be healthy..."

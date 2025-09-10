@@ -3,6 +3,7 @@ import { ArchitectureData } from '../models/Architecture.js';
 import { CleanArchitectureData } from '../models/CleanArchitecture.js';
 import { ArchitectureParserService } from '../services/ArchitectureParserService.js';
 import { ArchitectureConverterService } from '../services/ArchitectureConverterService.js';
+import { FrontendArchitectureTransformerService } from '../services/FrontendArchitectureTransformerService.js';
 import { ModuleMapperService } from '../services/ModuleMapperService.js';
 import { ModularTerraformGeneratorService } from '../services/ModularTerraformGeneratorService.js';
 import { ModuleRegistryService } from '../services/ModuleRegistryService.js';
@@ -33,7 +34,37 @@ export class TerraformController {
       // Detect format and convert if necessary
       let processedArchitectureData: ArchitectureData;
 
-      if (TerraformController.isCleanFormat(architectureData)) {
+      if (TerraformController.isFrontendFormat(architectureData)) {
+        console.log('🎨 Detected frontend format, transforming to backend format...');
+
+        // Validate frontend format first
+        const frontendValidation = FrontendArchitectureTransformerService.validateFrontendData(architectureData);
+
+        if (!frontendValidation.valid) {
+          const errorResponse = ResponseView.error(
+            'Frontend architecture validation failed',
+            frontendValidation.errors.join('; ')
+          );
+          res.status(400).json(errorResponse);
+          return;
+        }
+
+        // Transform frontend data to backend format
+        const transformationResult = FrontendArchitectureTransformerService.transformToBackendFormat(architectureData as any);
+
+        if (transformationResult.errors.length > 0) {
+          const errorResponse = ResponseView.error(
+            'Frontend architecture transformation failed',
+            transformationResult.errors.join('; ')
+          );
+          res.status(400).json(errorResponse);
+          return;
+        }
+
+        processedArchitectureData = transformationResult.transformed;
+        console.log(`✅ Frontend transformation completed: ${transformationResult.mappings.length} resources transformed`);
+
+      } else if (TerraformController.isCleanFormat(architectureData)) {
         console.log('🔄 Detected clean format, converting to legacy format...');
 
         // Validate clean format first
@@ -108,7 +139,11 @@ export class TerraformController {
           warnings: mappingResult.warnings
         },
         projectName,
-        formatUsed: TerraformController.isCleanFormat(architectureData) ? 'clean' : 'legacy'
+        formatUsed: TerraformController.isFrontendFormat(architectureData) 
+          ? 'frontend' 
+          : TerraformController.isCleanFormat(architectureData) 
+            ? 'clean' 
+            : 'legacy'
       }, 'Modular Terraform configuration generated successfully');
 
       res.json(response);
@@ -463,6 +498,74 @@ export class TerraformController {
   }
 
   /**
+   * Download all Terraform files for a project as a ZIP archive
+   */
+  static async downloadProjectZip(req: Request, res: Response): Promise<void> {
+    try {
+      const { projectName } = req.params;
+      const zipBuffer = await FileService.createProjectZip(projectName);
+
+      if (!zipBuffer) {
+        const errorResponse = ResponseView.error('Project not found or no files available');
+        res.status(404).json(errorResponse);
+        return;
+      }
+
+      // Set appropriate headers for ZIP file download
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename="${projectName}-terraform.zip"`);
+      res.setHeader('Content-Length', zipBuffer.length);
+
+      res.send(zipBuffer);
+
+    } catch (error) {
+      console.error('❌ Error creating project ZIP:', error);
+      const errorResponse = ResponseView.error('Failed to create project ZIP file');
+      res.status(500).json(errorResponse);
+    }
+  }
+
+  /**
+   * Get list of available projects
+   */
+  static async getProjects(req: Request, res: Response): Promise<void> {
+    try {
+      const projects = FileService.getAvailableProjects();
+      const response = ResponseView.projectsList(projects);
+      res.json(response);
+
+    } catch (error) {
+      console.error('❌ Error listing projects:', error);
+      const errorResponse = ResponseView.error('Failed to list projects');
+      res.status(500).json(errorResponse);
+    }
+  }
+
+  /**
+   * Get files in a specific project
+   */
+  static async getProjectFiles(req: Request, res: Response): Promise<void> {
+    try {
+      const { projectName } = req.params;
+      const files = FileService.getProjectFiles(projectName);
+      
+      if (files.length === 0) {
+        const errorResponse = ResponseView.error('Project not found or no files available');
+        res.status(404).json(errorResponse);
+        return;
+      }
+
+      const response = ResponseView.terraformFilesList(files);
+      res.json(response);
+
+    } catch (error) {
+      console.error('❌ Error listing project files:', error);
+      const errorResponse = ResponseView.error('Failed to list project files');
+      res.status(500).json(errorResponse);
+    }
+  }
+
+  /**
    * Build dependency visualization data
    */
   private static buildDependencyVisualization(
@@ -538,6 +641,25 @@ export class TerraformController {
       currency: 'USD',
       disclaimer: 'This is a rough estimate. Actual costs may vary based on usage and AWS pricing changes.'
     };
+  }
+
+  /**
+   * Detect if the architecture data is in frontend format
+   */
+  private static isFrontendFormat(data: any): boolean {
+    // Check for frontend format structure
+    return !!(
+      data.metadata &&
+      data.nodes &&
+      Array.isArray(data.nodes) &&
+      data.nodes.length > 0 &&
+      data.nodes.some((node: any) => 
+        node.nodeType && 
+        (node.nodeType === 'awsService' || node.nodeType === 'awsContainer') &&
+        node.resourceType &&
+        node.resourceType.startsWith('aws-')
+      )
+    );
   }
 
   /**

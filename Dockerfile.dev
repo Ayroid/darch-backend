@@ -1,0 +1,39 @@
+# Development Dockerfile for hot reloading
+FROM node:18-alpine
+
+# Install development dependencies
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    wget \
+    unzip \
+    curl \
+    bash
+
+# Install Terraform
+ARG TERRAFORM_VERSION=1.6.6
+RUN wget https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip && \
+    unzip terraform_${TERRAFORM_VERSION}_linux_amd64.zip && \
+    mv terraform /usr/local/bin/ && \
+    rm terraform_${TERRAFORM_VERSION}_linux_amd64.zip
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+COPY tsconfig.json ./
+COPY nodemon.json ./
+
+# Install all dependencies (including dev dependencies)
+RUN npm install
+
+# Create required directories
+RUN mkdir -p src/output
+
+# Expose port
+EXPOSE 5000
+
+# Default command for development with hot reload
+CMD ["npm", "run", "dev"]

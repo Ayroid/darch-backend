@@ -1,0 +1,134 @@
+{
+  "architectureData": {
+    "metadata": {
+      "name": "Untitled Architecture",
+      "description": "",
+      "version": "1.0.0",
+      "createdAt": "2025-09-09T17:46:05.882Z",
+      "lastModified": "2025-09-10T17:53:27.509Z",
+      "provider": "aws"
+    },
+    "nodes": [
+      {
+        "id": "aws-region-fqx1xt",
+        "nodeType": "awsContainer",
+        "resourceType": "aws-region",
+        "name": "Region",
+        "position": {
+          "x": 593.8181608017329,
+          "y": -105.1766959118607
+        },
+        "configuration": {
+          "awsRegionId": "AWS Region",
+          "region": "us-east-1",
+          "regionName": "US East (N. Virginia)",
+          "description": "",
+          "isEnabled": true,
+          "isDefault": true,
+          "tags": {
+            "Type": "Region"
+          }
+        }
+      },
+      {
+        "id": "aws-availability-zone-pine2w",
+        "nodeType": "awsContainer",
+        "resourceType": "aws-availability-zone",
+        "name": "AvailabilityZone",
+        "position": {
+          "x": 28.464958697363045,
+          "y": 28.947453771329393
+        },
+        "configuration": {
+          "awsAvailabilityZoneId": "AWS Availability Zone",
+          "awsRegionId": "us-east-1",
+          "availabilityZone": "us-east-1a",
+          "description": "",
+          "isEnabled": true,
+          "isPreferred": false,
+          "tags": {
+            "Type": "AvailabilityZone"
+          }
+        }
+      },
+      {
+        "id": "aws-vpc-75z69v",
+        "nodeType": "awsContainer",
+        "resourceType": "aws-vpc",
+        "name": "VPC",
+        "position": {
+          "x": 27.96021586964605,
+          "y": 30.242682471249665
+        },
+        "configuration": {
+          "awsVpcId": "AWS VPC",
+          "cidr_block": "10.0.0.0/16",
+          "awsRegionId": "us-east-1",
+          "enable_dns_support": true,
+          "enable_dns_hostnames": true,
+          "tags": {
+            "Environment": "Development"
+          }
+        }
+      },
+      {
+        "id": "aws-public-subnet-p8cd6x",
+        "nodeType": "awsContainer",
+        "resourceType": "aws-public-subnet",
+        "name": "PublicSubnet",
+        "position": {
+          "x": 25.107132617641128,
+          "y": 29.10144917044779
+        },
+        "configuration": {
+          "awsVpcId": "aws-vpc-75z69v",
+          "cidr_block": "10.0.0.0/24",
+          "awsRegionId": "us-east-1",
+          "availability_zone": "us-east-1a",
+          "description": "",
+          "map_public_ip_on_launch": true,
+          "tags": {
+            "Type": "Public"
+          },
+          "awsPublicSubnetId": "AWS Public Subnet"
+        }
+      },
+      {
+        "id": "aws-ec2-cg4rtf",
+        "nodeType": "awsService",
+        "resourceType": "aws-ec2",
+        "name": "EC2",
+        "position": {
+          "x": 215.1224772011533,
+          "y": 82.16879765773491
+        },
+        "configuration": {
+          "awsEc2Id": "AWS EC2",
+          "instance_type": "t3.micro",
+          "ami_id": "ami-0c55b159cbfafe1d0",
+          "key_name": "",
+          "awsRegionId": "us-east-1",
+          "awsAvailabilityZone": "us-east-1a",
+          "subnet_id": "aws-public-subnet-p8cd6x",
+          "security_group_ids": [],
+          "monitoring": false,
+          "disable_api_termination": false,
+          "auto_recovery": true,
+          "associate_public_ip_address": false,
+          "tenancy": "default",
+          "tags": {},
+          "root_block_device": {
+            "volume_size": 8,
+            "volume_type": "gp3",
+            "delete_on_termination": true,
+            "encrypted": false
+          }
+        }
+      }
+    ],
+    "connections": [],
+    "variables": {},
+    "outputs": {}
+  },
+  "projectName": "Project 1"
+}

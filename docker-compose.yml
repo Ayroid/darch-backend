@@ -1,15 +1,97 @@
 version: '3.8'
 
 services:
-  terraform-generator:
-    build: .
-    container_name: darch-terraform-generator
+  # Main Darch Backend API
+  darch-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: darch-backend-api
+    ports:
+      - "5000:5000"
     volumes:
+      # Mount output directory for generated Terraform files
+      - ./src/output:/app/src/output
+      # Mount terraform modules for development (optional)
+      - ./terraform-modules:/app/terraform-modules:ro
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - API_HOST=0.0.0.0
+    healthcheck:
+      test: ["CMD", "./docker-healthcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - darch-network
+
+  # Development version with hot reload
+  darch-backend-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: darch-backend-dev
+    ports:
+      - "5001:5000"
+    volumes:
+      # Mount source code for development
       - ./src:/app/src
-      - ./test-terraform.sh:/app/test-terraform.sh
-    working_dir: /app
-    command: /bin/bash
-    stdin_open: true
-    tty: true
+      - ./terraform-modules:/app/terraform-modules
+      - ./package.json:/app/package.json
+      - ./tsconfig.json:/app/tsconfig.json
+      - ./nodemon.json:/app/nodemon.json
+      # Mount output directory
+      - ./src/output:/app/src/output
     environment:
       - NODE_ENV=development
+      - PORT=5000
+      - API_HOST=0.0.0.0
+    command: npm run dev
+    restart: unless-stopped
+    networks:
+      - darch-network
+    profiles:
+      - dev
+
+  # Optional: Redis for caching (future enhancement)
+  redis:
+    image: redis:7-alpine
+    container_name: darch-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - darch-network
+    profiles:
+      - cache
+
+  # Optional: MongoDB for storing architectures (future enhancement)
+  mongodb:
+    image: mongo:7
+    container_name: darch-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb-data:/data/db
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=password
+    restart: unless-stopped
+    networks:
+      - darch-network
+    profiles:
+      - database
+
+networks:
+  darch-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+  mongodb-data:

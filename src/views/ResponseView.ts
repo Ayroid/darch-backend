@@ -60,4 +60,24 @@ export class ResponseView {
       downloadUrl: `/api/terraform-files/${filename}/download`
     });
   }
+
+  /**
+   * Format projects list response
+   */
+  static projectsList(projects: Array<{
+    name: string;
+    path: string;
+    fileCount: number;
+    createdAt: string;
+    modifiedAt: string;
+    size: number;
+  }>): ApiResponse<{ projects: typeof projects }> {
+    return this.success({
+      projects: projects.map(project => ({
+        ...project,
+        downloadUrl: `/api/projects/${project.name}/download`,
+        filesUrl: `/api/projects/${project.name}/files`
+      }))
+    }, `Found ${projects.length} project(s)`);
+  }
 }

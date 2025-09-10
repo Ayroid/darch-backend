@@ -10,3 +10,33 @@ coverage
 .nyc_output
 .coverage
 *.log
+
+# Development files
+src/output/*
+!src/output/.gitkeep
+
+# Docker files (don't copy during build)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Test files
+test-*.js
+test-*.sh
+*.test.js
+*.spec.js
+
+# Documentation
+docs/
+*.md
+!FRONTEND_API_INTEGRATION_GUIDE.md
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db

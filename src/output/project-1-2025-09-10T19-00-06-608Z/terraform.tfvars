@@ -5,19 +5,19 @@
 # This file was automatically generated from architecture diagrams.
 # Manual modifications may be overwritten during regeneration.
 #
-# Generation time: 2025-09-09T18:25:49.352Z
+# Generation time: 2025-09-10T19:00:06.608Z
 ################################################################################
 
 
 # Project Configuration
-aws_region   = "us-east-1"
+aws_region   = "ap-south-1"
 environment  = "development"
-project_name = "simple-infrastructure"
+project_name = "infrastructure"
 
 # Common Tags
 common_tags = {
   Environment = "development"
-  Project     = "simple-infrastructure"
+  Project     = "infrastructure"
   ManagedBy   = "Terraform"
   CreatedBy   = "Darch"
   Version     = "1.0.0"

@@ -1,0 +1,38 @@
+{
+  "architectureData": {
+    "metadata": {
+      "name": "Minimal Test Architecture",
+      "description": "Testing minimal valid payload",
+      "version": "1.0.0",
+      "createdAt": "2025-09-10T17:00:00.000Z",
+      "lastModified": "2025-09-10T17:00:00.000Z",
+      "provider": "aws"
+    },
+    "nodes": [
+      {
+        "id": "vpc-test-001",
+        "nodeType": "awsService",
+        "resourceType": "vpc",
+        "name": "Main VPC",
+        "icon": "/aws_icons/architecture_service_icons/Arch_Networking-Content-Delivery/32/Arch_Amazon-Virtual-Private-Cloud_32.svg",
+        "position": {
+          "x": 100,
+          "y": 100
+        },
+        "configuration": {
+          "cidr_block": "10.0.0.0/16",
+          "enable_dns_support": true,
+          "enable_dns_hostnames": true,
+          "tags": {
+            "Name": "Main VPC",
+            "Environment": "Testing"
+          }
+        }
+      }
+    ],
+    "connections": [],
+    "variables": {},
+    "outputs": {}
+  },
+  "projectName": "minimal-test"
+}

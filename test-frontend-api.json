@@ -1,0 +1,127 @@
+{
+  "architectureData": {
+    "metadata": {
+      "name": "Frontend Test Architecture",
+      "description": "Testing frontend to backend transformation",
+      "version": "1.0.0",
+      "createdAt": "2025-09-10T16:36:46.563Z",
+      "lastModified": "2025-09-10T16:36:46.563Z",
+      "provider": "aws"
+    },
+    "nodes": [
+      {
+        "id": "aws-region-test",
+        "nodeType": "awsContainer",
+        "resourceType": "aws-region",
+        "name": "Region",
+        "icon": "/aws_icons/architecture_group_icons/AWS-Cloud_32.svg",
+        "position": {
+          "x": 540,
+          "y": 37
+        },
+        "dimensions": {
+          "width": 709,
+          "height": 522
+        },
+        "configuration": {
+          "awsRegionId": "AWS Region",
+          "region": "us-east-1",
+          "regionName": "US East (N. Virginia)",
+          "description": "",
+          "isEnabled": true,
+          "isDefault": true,
+          "tags": "Type=Region"
+        }
+      },
+      {
+        "id": "aws-vpc-test",
+        "nodeType": "awsContainer",
+        "resourceType": "aws-vpc",
+        "name": "VPC",
+        "icon": "/aws_icons/architecture_service_icons/Arch_Networking-Content-Delivery/32/Arch_Amazon-Virtual-Private-Cloud_32.svg",
+        "position": {
+          "x": 27,
+          "y": 33
+        },
+        "dimensions": {
+          "width": 596,
+          "height": 399
+        },
+        "configuration": {
+          "awsVpcId": "AWS VPC",
+          "cidrBlock": "10.0.0.0/16",
+          "awsRegionId": "us-east-1",
+          "enableDnsSupport": true,
+          "enableDnsHostnames": true,
+          "tags": "Environment=Testing"
+        },
+        "parentId": "aws-region-test"
+      },
+      {
+        "id": "aws-public-subnet-test",
+        "nodeType": "awsContainer",
+        "resourceType": "aws-public-subnet",
+        "name": "PublicSubnet",
+        "icon": "/aws_icons/architecture_group_icons/Public-subnet_32.svg",
+        "position": {
+          "x": 31,
+          "y": 35
+        },
+        "dimensions": {
+          "width": 250,
+          "height": 334
+        },
+        "configuration": {
+          "awsPublicSubnetId": "AWS Public Subnet",
+          "cidrBlock": "10.0.1.0/24",
+          "awsAvailabilityZone": "us-east-1a",
+          "awsVpcId": "aws-vpc-test",
+          "awsRegionId": "us-east-1",
+          "description": "",
+          "mapPublicIpOnLaunch": true,
+          "tags": "Type=Public"
+        },
+        "parentId": "aws-vpc-test"
+      },
+      {
+        "id": "aws-ec2-test",
+        "nodeType": "awsService",
+        "resourceType": "aws-ec2",
+        "name": "WebServer",
+        "icon": "/aws_icons/architecture_service_icons/Arch_Compute/32/Arch_Amazon-EC2_32.svg",
+        "position": {
+          "x": 85,
+          "y": 118
+        },
+        "configuration": {
+          "awsEc2Id": "AWS EC2",
+          "instanceType": "t3.micro",
+          "amiId": "ami-0c55b159cbfafe1d0",
+          "keyPairName": "my-key",
+          "awsRegionId": "us-east-1",
+          "awsAvailabilityZone": "us-east-1a",
+          "subnetId": "aws-public-subnet-test",
+          "securityGroups": [],
+          "rootVolumeSize": 8,
+          "rootVolumeType": "gp3",
+          "deleteOnTermination": true,
+          "encrypted": false,
+          "detailedMonitoring": false,
+          "terminationProtection": false,
+          "autoRecovery": true,
+          "associatePublicIpAddress": true,
+          "tenancy": "default",
+          "tags": {
+            "Name": "WebServer",
+            "Environment": "Testing"
+          }
+        },
+        "parentId": "aws-public-subnet-test"
+      }
+    ],
+    "connections": [],
+    "variables": {},
+    "outputs": {}
+  },
+  "projectName": "frontend-test"
+}

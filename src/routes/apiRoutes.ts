@@ -67,6 +67,15 @@ router.post('/modules/refresh', TerraformController.refreshModuleRegistry);
 // FILE MANAGEMENT ENDPOINTS
 // =====================================
 
+// Get list of available projects
+router.get('/projects', TerraformController.getProjects);
+
+// Get files in a specific project
+router.get('/projects/:projectName/files', TerraformController.getProjectFiles);
+
+// Download project as ZIP
+router.get('/projects/:projectName/download', TerraformController.downloadProjectZip);
+
 // Get generated terraform files
 router.get('/terraform-files', TerraformController.getTerraformFiles);
 

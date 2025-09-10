@@ -5,7 +5,7 @@
 # This file was automatically generated from architecture diagrams.
 # Manual modifications may be overwritten during regeneration.
 #
-# Generation time: 2025-09-09T18:25:49.352Z
+# Generation time: 2025-09-10T19:00:06.608Z
 ################################################################################
 
 
@@ -22,8 +22,8 @@ terraform {
   # Uncomment and configure for remote state
   # backend "s3" {
   #   bucket = "your-terraform-state-bucket"
-  #   key    = "simple-infrastructure/development/terraform.tfstate"
-  #   region = "us-east-1"
+  #   key    = "infrastructure/development/terraform.tfstate"
+  #   region = "ap-south-1"
   # }
 }
 

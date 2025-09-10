@@ -1,44 +1,92 @@
-# Use Node.js 18 as base image
-FROM node:18-alpine
+# Production Dockerfile for Darch Backend
+FROM node:18-alpine AS builder
 
-# Install necessary packages including terraform
+# Install build dependencies
 RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
     wget \
     unzip \
     curl \
     bash
 
 # Install Terraform
-ARG TERRAFORM_VERSION=1.5.7
+ARG TERRAFORM_VERSION=1.6.6
+RUN wget https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip && \
+    unzip terraform_${TERRAFORM_VERSION}_linux_amd64.zip && \
+    mv terraform /usr/local/bin/ && \
+    rm terraform_${TERRAFORM_VERSION}_linux_amd64.zip && \
+    terraform version
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+COPY tsconfig.json ./
+
+# Install dependencies
+RUN npm ci && npm cache clean --force
+
+# Copy source code
+COPY src/ ./src/
+COPY terraform-modules/ ./terraform-modules/
+
+# Build TypeScript
+RUN npm run build
+
+# Production stage
+FROM node:18-alpine AS production
+
+# Install runtime dependencies
+RUN apk add --no-cache \
+    wget \
+    unzip \
+    curl \
+    bash \
+    dumb-init
+
+# Install Terraform
+ARG TERRAFORM_VERSION=1.6.6
 RUN wget https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip && \
     unzip terraform_${TERRAFORM_VERSION}_linux_amd64.zip && \
     mv terraform /usr/local/bin/ && \
     rm terraform_${TERRAFORM_VERSION}_linux_amd64.zip
 
+# Create non-root user for security
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S darch -u 1001
+
 # Set working directory
 WORKDIR /app
 
-# Copy package.json and package-lock.json (if available)
-COPY package*.json ./
+# Copy built application from builder stage
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/terraform-modules ./terraform-modules
 
-# Install Node.js dependencies
-RUN npm install
+# Create required directories
+RUN mkdir -p src/output && \
+    chown -R darch:nodejs /app
 
-# Copy the rest of the application code
-COPY . .
+# Copy health check script
+COPY --chown=darch:nodejs docker-healthcheck.sh ./
+RUN chmod +x docker-healthcheck.sh
 
-# Build the TypeScript project
-RUN npm run build
+# Switch to non-root user
+USER darch
 
-# Create output directory if it doesn't exist
-RUN mkdir -p src/output
+# Expose port
+EXPOSE 5000
 
-# Create a test script for Terraform validation
-COPY test-terraform.sh /app/test-terraform.sh
-RUN chmod +x /app/test-terraform.sh
+# Add health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD ./docker-healthcheck.sh
 
-# Expose port (if needed for future web interface)
-EXPOSE 3000
+# Use dumb-init to handle signals properly
+ENTRYPOINT ["dumb-init", "--"]
 
-# Default command - run the test script
-CMD ["/bin/bash", "/app/test-terraform.sh"]
+# Default command - start the API server
+CMD ["node", "dist/index.js"]

@@ -5,14 +5,14 @@
 # This file was automatically generated from architecture diagrams.
 # Manual modifications may be overwritten during regeneration.
 #
-# Generation time: 2025-09-09T18:25:49.351Z
+# Generation time: 2025-09-10T19:00:06.608Z
 ################################################################################
 
 
 variable "aws_region" {
   description = "AWS region where resources will be created"
   type        = string
-  default     = "us-east-1"
+  default     = "ap-south-1"
 }
 
 variable "environment" {
@@ -29,7 +29,7 @@ variable "environment" {
 variable "project_name" {
   description = "Name of the project"
   type        = string
-  default     = "simple-infrastructure"
+  default     = "infrastructure"
 }
 
 variable "common_tags" {
@@ -37,7 +37,7 @@ variable "common_tags" {
   type        = map(string)
   default = {
     Environment = "development"
-    Project     = "simple-infrastructure"
+    Project     = "infrastructure"
     ManagedBy   = "Terraform"
     CreatedBy   = "Darch"
   }
@@ -46,7 +46,7 @@ variable "common_tags" {
 variable "name" {
   description = "Configuration for name"
   type        = string
-  default     = "main-vpc"
+  default     = "VPC"
 }
 
 
@@ -89,13 +89,14 @@ variable "tags" {
   description = "Tags to apply to resources"
   type        = map(any)
   default     = {
-    Environment = "development"
-    Project = "simple-infrastructure"
+    Environment = "Development"
+    Project = "infrastructure"
     ManagedBy = "Darch"
-    CreatedAt = "2025-09-09T18:25:49.342Z"
-    Name = "main-vpc"
+    CreatedAt = "2025-09-10T19:00:06.600Z"
+    Name = "VPC"
     ResourceType = "vpc"
-    NodeId = "main-vpc"
+    NodeId = "aws-vpc-oeyglt"
+    ResourceId = "aws-vpc-oeyglt"
   }
 }
 
@@ -103,35 +104,35 @@ variable "tags" {
 variable "region" {
   description = "Configuration for region"
   type        = string
-  default     = "us-east-1"
+  default     = "ap-south-1"
 }
 
 
 variable "vpc_id" {
   description = "Configuration for vpc_id"
   type        = string
-  default     = "main-vpc"
+  default     = "aws-vpc-oeyglt"
 }
 
 
 variable "availability_zone" {
   description = "Availability zone for resources"
   type        = string
-  default     = "us-east-1a"
+  default     = "ap-south-1b"
 }
 
 
 variable "subnet_type" {
   description = "Type of subnet (public, private, database)"
   type        = string
-  default     = "private"
+  default     = "public"
 }
 
 
 variable "map_public_ip_on_launch" {
   description = "Configuration for map_public_ip_on_launch"
   type        = bool
-  default     = false
+  default     = true
 }
 
 
@@ -156,65 +157,6 @@ variable "nat_gateway_id" {
 }
 
 
-variable "description" {
-  description = "Configuration for description"
-  type        = string
-  default     = "Security group for web servers"
-}
-
-
-variable "ingress_rules" {
-  description = "Configuration for ingress_rules"
-  type        = list(any)
-  default     = [{
-    from_port = 80
-    to_port = 80
-    protocol = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "HTTP access"
-  }, {
-    from_port = 443
-    to_port = 443
-    protocol = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "HTTPS access"
-  }, {
-    from_port = 22
-    to_port = 22
-    protocol = "tcp"
-    cidr_blocks = ["10.0.0.0/16"]
-    description = "SSH access from VPC"
-  }]
-}
-
-
-variable "egress_rules" {
-  description = "Configuration for egress_rules"
-  type        = list(any)
-  default     = [{
-    from_port = 0
-    to_port = 0
-    protocol = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "All outbound traffic"
-  }]
-}
-
-
-variable "create_default_egress_rule" {
-  description = "Configuration for create_default_egress_rule"
-  type        = bool
-  default     = true
-}
-
-
-variable "revoke_rules_on_delete" {
-  description = "Configuration for revoke_rules_on_delete"
-  type        = bool
-  default     = false
-}
-
-
 variable "instance_type" {
   description = "EC2 instance type"
   type        = string
@@ -232,14 +174,14 @@ variable "ami_id" {
 variable "subnet_id" {
   description = "Configuration for subnet_id"
   type        = string
-  default     = "private-subnet"
+  default     = "aws-public-subnet-h8yvb3"
 }
 
 
 variable "security_group_ids" {
   description = "List of security group IDs"
-  type        = list(string)
-  default     = ["web-security-group"]
+  type        = list(any)
+  default     = []
 }
 
 
@@ -296,8 +238,8 @@ variable "root_block_device" {
   description = "Configuration for root_block_device"
   type        = map(any)
   default     = {
-    volume_type = "gp3"
     volume_size = 8
+    volume_type = "gp3"
     delete_on_termination = true
     encrypted = false
   }

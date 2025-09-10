@@ -5,7 +5,7 @@
 # This file was automatically generated from architecture diagrams.
 # Manual modifications may be overwritten during regeneration.
 #
-# Generation time: 2025-09-10T19:00:06.602Z
+# Generation time: 2025-09-10T19:52:54.488Z
 ################################################################################
 
 
@@ -21,7 +21,7 @@ locals {
   name_prefix = "${var.project_name}-${var.environment}"
 }
 
-module "vpc_oeyglt" {
+module "vpc_75z69v" {
   source = "./terraform-modules/networking/vpc"
 
   cidr_block           = "10.0.0.0/16"
@@ -30,23 +30,23 @@ module "vpc_oeyglt" {
   enable_dns_support   = true
   instance_tenancy     = "default"
   name                 = "VPC"
-  region               = "ap-south-1"
+  region               = "ap-east-1"
   tags                 = {
     Environment = "Development"
     Project = "infrastructure"
     ManagedBy = "Darch"
-    CreatedAt = "2025-09-10T19:00:06.600Z"
+    CreatedAt = "2025-09-10T19:52:54.487Z"
     Name = "VPC"
     ResourceType = "vpc"
-    NodeId = "aws-vpc-oeyglt"
-    ResourceId = "aws-vpc-oeyglt"
+    NodeId = "aws-vpc-75z69v"
+    ResourceId = "aws-vpc-75z69v"
   }
 }
 
-module "publicsubnet_h8yvb3" {
+module "publicsubnet_p8cd6x" {
   source = "./terraform-modules/networking/subnet"
 
-  availability_zone    = "ap-south-1b"
+  availability_zone    = "ap-east-1c"
   cidr_block           = "10.0.0.0/24"
   create_route_table   = true
   internet_gateway_id  = null
@@ -58,21 +58,21 @@ module "publicsubnet_h8yvb3" {
     Environment = "development"
     Project = "infrastructure"
     ManagedBy = "Darch"
-    CreatedAt = "2025-09-10T19:00:06.600Z"
+    CreatedAt = "2025-09-10T19:52:54.487Z"
     Name = "PublicSubnet"
     ResourceType = "subnet"
-    NodeId = "aws-public-subnet-h8yvb3"
+    NodeId = "aws-public-subnet-p8cd6x"
     Type = "Public"
-    ResourceId = "aws-public-subnet-h8yvb3"
+    ResourceId = "aws-public-subnet-p8cd6x"
   }
-  vpc_id               = "aws-vpc-oeyglt"
+  vpc_id               = "aws-vpc-75z69v"
 
   depends_on = [
-    module.vpc_oeyglt,
+    module.vpc_75z69v,
   ]
 }
 
-module "ec2_2uov8e" {
+module "ec2_cg4rtf" {
   source = "./terraform-modules/compute/ec2"
 
   ami_id               = "ami-0c55b159cbfafe1d0"
@@ -81,7 +81,7 @@ module "ec2_2uov8e" {
   ebs_block_device     = []
   ebs_optimized        = false
   iam_instance_profile = null
-  instance_type        = "t3.micro"
+  instance_type        = "t2.xlarge"
   key_name             = null
   monitoring           = false
   name                 = "EC2"
@@ -92,16 +92,16 @@ module "ec2_2uov8e" {
     encrypted = false
   }
   security_group_ids   = []
-  subnet_id            = "aws-public-subnet-h8yvb3"
+  subnet_id            = "aws-public-subnet-p8cd6x"
   tags                 = {
     Environment = "development"
     Project = "infrastructure"
     ManagedBy = "Darch"
-    CreatedAt = "2025-09-10T19:00:06.600Z"
+    CreatedAt = "2025-09-10T19:52:54.487Z"
     Name = "EC2"
     ResourceType = "ec2"
-    NodeId = "aws-ec2-2uov8e"
-    ResourceId = "aws-ec2-2uov8e"
+    NodeId = "aws-ec2-cg4rtf"
+    ResourceId = "aws-ec2-cg4rtf"
   }
   user_data            = null
   volume_tags          = {
@@ -109,8 +109,7 @@ module "ec2_2uov8e" {
   }
 
   depends_on = [
-    module.vpc_oeyglt,
-    module.publicsubnet_h8yvb3,
+    module.publicsubnet_p8cd6x,
   ]
 }
 

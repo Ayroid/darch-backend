@@ -5,14 +5,14 @@
 # This file was automatically generated from architecture diagrams.
 # Manual modifications may be overwritten during regeneration.
 #
-# Generation time: 2025-09-10T19:00:06.608Z
+# Generation time: 2025-09-10T19:52:54.488Z
 ################################################################################
 
 
 variable "aws_region" {
   description = "AWS region where resources will be created"
   type        = string
-  default     = "ap-south-1"
+  default     = "ap-east-1"
 }
 
 variable "environment" {
@@ -92,11 +92,11 @@ variable "tags" {
     Environment = "Development"
     Project = "infrastructure"
     ManagedBy = "Darch"
-    CreatedAt = "2025-09-10T19:00:06.600Z"
+    CreatedAt = "2025-09-10T19:52:54.487Z"
     Name = "VPC"
     ResourceType = "vpc"
-    NodeId = "aws-vpc-oeyglt"
-    ResourceId = "aws-vpc-oeyglt"
+    NodeId = "aws-vpc-75z69v"
+    ResourceId = "aws-vpc-75z69v"
   }
 }
 
@@ -104,21 +104,21 @@ variable "tags" {
 variable "region" {
   description = "Configuration for region"
   type        = string
-  default     = "ap-south-1"
+  default     = "ap-east-1"
 }
 
 
 variable "vpc_id" {
   description = "Configuration for vpc_id"
   type        = string
-  default     = "aws-vpc-oeyglt"
+  default     = "aws-vpc-75z69v"
 }
 
 
 variable "availability_zone" {
   description = "Availability zone for resources"
   type        = string
-  default     = "ap-south-1b"
+  default     = "ap-east-1c"
 }
 
 
@@ -160,7 +160,7 @@ variable "nat_gateway_id" {
 variable "instance_type" {
   description = "EC2 instance type"
   type        = string
-  default     = "t3.micro"
+  default     = "t2.xlarge"
 }
 
 
@@ -174,7 +174,7 @@ variable "ami_id" {
 variable "subnet_id" {
   description = "Configuration for subnet_id"
   type        = string
-  default     = "aws-public-subnet-h8yvb3"
+  default     = "aws-public-subnet-p8cd6x"
 }
 
 

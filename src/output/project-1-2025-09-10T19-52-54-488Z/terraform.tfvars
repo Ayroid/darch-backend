@@ -5,12 +5,12 @@
 # This file was automatically generated from architecture diagrams.
 # Manual modifications may be overwritten during regeneration.
 #
-# Generation time: 2025-09-10T19:00:06.608Z
+# Generation time: 2025-09-10T19:52:54.488Z
 ################################################################################
 
 
 # Project Configuration
-aws_region   = "ap-south-1"
+aws_region   = "ap-east-1"
 environment  = "development"
 project_name = "infrastructure"
 

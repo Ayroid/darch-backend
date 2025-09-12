@@ -139,10 +139,10 @@ export class TerraformController {
           warnings: mappingResult.warnings
         },
         projectName,
-        formatUsed: TerraformController.isFrontendFormat(architectureData) 
-          ? 'frontend' 
-          : TerraformController.isCleanFormat(architectureData) 
-            ? 'clean' 
+        formatUsed: TerraformController.isFrontendFormat(architectureData)
+          ? 'frontend'
+          : TerraformController.isCleanFormat(architectureData)
+            ? 'clean'
             : 'legacy'
       }, 'Modular Terraform configuration generated successfully');
 
@@ -548,7 +548,7 @@ export class TerraformController {
     try {
       const { projectName } = req.params;
       const files = FileService.getProjectFiles(projectName);
-      
+
       if (files.length === 0) {
         const errorResponse = ResponseView.error('Project not found or no files available');
         res.status(404).json(errorResponse);
@@ -653,8 +653,8 @@ export class TerraformController {
       data.nodes &&
       Array.isArray(data.nodes) &&
       data.nodes.length > 0 &&
-      data.nodes.some((node: any) => 
-        node.nodeType && 
+      data.nodes.some((node: any) =>
+        node.nodeType &&
         (node.nodeType === 'awsService' || node.nodeType === 'awsContainer') &&
         node.resourceType &&
         node.resourceType.startsWith('aws-')

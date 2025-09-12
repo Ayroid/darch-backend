@@ -1,13 +1,3 @@
-terraform {
-  required_version = ">= 1.0"
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = ">= 5.0"
-    }
-  }
-}
-
 # Get the latest Amazon Linux 2 AMI if no AMI ID is provided
 data "aws_ami" "amazon_linux" {
   count = var.ami_id == null ? 1 : 0

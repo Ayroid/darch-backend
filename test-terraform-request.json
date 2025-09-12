@@ -5,7 +5,7 @@
       "description": "Basic infrastructure with VPC, subnets, security group, and EC2 instances",
       "version": "1.0.0",
       "provider": "aws",
-      "region": "us-east-1",
+      "region": "ap-south-1",
       "environment": "development",
       "project": "simple-infrastructure",
       "createdAt": "2025-09-08T17:00:00.000Z",
@@ -47,7 +47,7 @@
         "configuration": {
           "vpc_id": "main-vpc",
           "cidr_block": "10.0.1.0/24",
-          "availability_zone": "us-east-1a",
+          "availability_zone": "ap-south-1a",
           "subnet_type": "private",
           "map_public_ip_on_launch": false,
           "tags": {
@@ -68,7 +68,7 @@
         "configuration": {
           "vpc_id": "main-vpc",
           "cidr_block": "10.0.2.0/24",
-          "availability_zone": "us-east-1a",
+          "availability_zone": "ap-south-1a",
           "subnet_type": "public",
           "map_public_ip_on_launch": true,
           "tags": {

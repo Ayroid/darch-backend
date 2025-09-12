@@ -3,7 +3,7 @@ import path from 'path';
 import { TerraformModule, ModuleMetadata, ModuleVariable, ModuleOutput } from '../models/TerraformModule.js';
 
 export class ModuleRegistryService {
-  private static modulesBasePath = path.resolve(process.cwd(), 'terraform-modules');
+  private static modulesBasePath = path.resolve(process.cwd(), 'src/data/terraform-modules');
   private static moduleRegistry: Map<string, TerraformModule> = new Map();
   private static initialized = false;
 
@@ -245,7 +245,7 @@ export class ModuleRegistryService {
       description: module.description,
       version: module.version,
       author: 'Darch Team',
-      source: `./terraform-modules/${category}/${name}`,
+      source: `./src/data/terraform-modules/${category}/${name}`,
       documentation: `Documentation for ${category}/${name} module`,
       examples: [],
       dependencies: module.dependencies,

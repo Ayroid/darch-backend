@@ -101,8 +101,8 @@ export class ModuleMapperService {
       metadata
     );
 
-    // Create module source path - use relative path from project output directory back to source
-    const modulePath = `../../../src/data/terraform-modules/${category}/${moduleName}`;
+    // Create module source path - use relative path from generated directory back to source
+    const modulePath = `../../../../../data/terraform-modules/${category}/${moduleName}`;
 
     return {
       name: moduleInstanceName,

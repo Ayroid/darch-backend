@@ -439,7 +439,7 @@ export class TerraformController {
    */
   static async getTerraformFiles(req: Request, res: Response): Promise<void> {
     try {
-      const files = FileService.getTerraformFiles();
+      const files = await FileService.getTerraformFiles();
       const response = ResponseView.terraformFilesList(files);
       res.json(response);
 
@@ -456,7 +456,8 @@ export class TerraformController {
   static async getTerraformFileContent(req: Request, res: Response): Promise<void> {
     try {
       const { filename } = req.params;
-      const content = FileService.getTerraformFileContent(filename);
+      const { projectId } = req.query as { projectId?: string };
+      const content = await FileService.getTerraformFileContent(filename, projectId);
 
       if (!content) {
         const errorResponse = ResponseView.error('Terraform file not found');
@@ -480,7 +481,8 @@ export class TerraformController {
   static async downloadTerraformFile(req: Request, res: Response): Promise<void> {
     try {
       const { filename } = req.params;
-      const filePath = FileService.getTerraformFilePath(filename);
+      const { projectId } = req.query as { projectId?: string };
+      const filePath = await FileService.getTerraformFilePath(filename, projectId);
 
       if (!filePath) {
         const errorResponse = ResponseView.error('Terraform file not found');
@@ -530,7 +532,7 @@ export class TerraformController {
    */
   static async getProjects(req: Request, res: Response): Promise<void> {
     try {
-      const projects = FileService.getAvailableProjects();
+      const projects = await FileService.getAvailableProjects();
       const response = ResponseView.projectsList(projects);
       res.json(response);
 
@@ -547,7 +549,7 @@ export class TerraformController {
   static async getProjectFiles(req: Request, res: Response): Promise<void> {
     try {
       const { projectName } = req.params;
-      const files = FileService.getProjectFiles(projectName);
+      const files = await FileService.getProjectFiles(projectName);
 
       if (files.length === 0) {
         const errorResponse = ResponseView.error('Project not found or no files available');
@@ -740,6 +742,60 @@ export class TerraformController {
         'Failed to generate clean format example',
         error instanceof Error ? error.message : 'Unknown error'
       );
+      res.status(500).json(errorResponse);
+    }
+  }
+
+  /**
+   * Get project workspace structure
+   */
+  static async getProjectStructure(req: Request, res: Response): Promise<void> {
+    try {
+      const { projectName } = req.params;
+      const structure = await FileService.getProjectStructure(projectName);
+
+      if (!structure) {
+        const errorResponse = ResponseView.error('Project not found');
+        res.status(404).json(errorResponse);
+        return;
+      }
+
+      const response = ResponseView.success({
+        projectName,
+        structure
+      }, 'Project structure retrieved successfully');
+      res.json(response);
+
+    } catch (error) {
+      console.error('❌ Error getting project structure:', error);
+      const errorResponse = ResponseView.error('Failed to get project structure');
+      res.status(500).json(errorResponse);
+    }
+  }
+
+  /**
+   * Delete a project
+   */
+  static async deleteProject(req: Request, res: Response): Promise<void> {
+    try {
+      const { projectName } = req.params;
+      const deleted = await FileService.deleteProject(projectName);
+
+      if (!deleted) {
+        const errorResponse = ResponseView.error('Project not found or could not be deleted');
+        res.status(404).json(errorResponse);
+        return;
+      }
+
+      const response = ResponseView.success({
+        projectName,
+        deleted: true
+      }, 'Project deleted successfully');
+      res.json(response);
+
+    } catch (error) {
+      console.error('❌ Error deleting project:', error);
+      const errorResponse = ResponseView.error('Failed to delete project');
       res.status(500).json(errorResponse);
     }
   }

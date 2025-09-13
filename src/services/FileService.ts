@@ -3,58 +3,84 @@ import path from 'path';
 import archiver from 'archiver';
 import { TerraformFile } from '../models/Architecture.js';
 import { TerraformGenerationResult } from './ModularTerraformGeneratorService.js';
+import { LocalFileManager } from './LocalFileManager.js';
 
 export class FileService {
-  private static outputDir = path.resolve('./src/output');
+  private static fileManager = new LocalFileManager('./src/output');
+  private static initialized = false;
 
   /**
-   * Get list of generated Terraform files
+   * Ensure workspace is initialized
    */
-  static getTerraformFiles(): TerraformFile[] {
-    if (!fs.existsSync(this.outputDir)) {
-      return [];
+  private static async ensureInitialized(): Promise<void> {
+    if (!this.initialized) {
+      await this.fileManager.initializeWorkspace();
+      this.initialized = true;
     }
-
-    return fs.readdirSync(this.outputDir)
-      .filter(file => file.endsWith('.tf'))
-      .map(file => {
-        const filePath = path.join(this.outputDir, file);
-        const stats = fs.statSync(filePath);
-        return {
-          name: file,
-          path: path.relative(process.cwd(), filePath),
-          size: stats.size,
-          createdAt: stats.birthtime.toISOString(),
-          modifiedAt: stats.mtime.toISOString()
-        };
-      })
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
   /**
-   * Get content of a specific Terraform file
+   * Get list of generated Terraform files (Legacy compatibility)
    */
-  static getTerraformFileContent(filename: string): string | null {
-    const filePath = path.join(this.outputDir, filename);
+  static async getTerraformFiles(): Promise<TerraformFile[]> {
+    await this.ensureInitialized();
 
-    if (!fs.existsSync(filePath) || !filename.endsWith('.tf')) {
-      return null;
+    // Get all files from all projects for backward compatibility
+    const projects = this.fileManager.getUserProjects();
+    const allFiles: TerraformFile[] = [];
+
+    for (const project of projects) {
+      const projectFiles = this.fileManager.getProjectFiles(project.projectId);
+      allFiles.push(...projectFiles);
     }
 
-    return fs.readFileSync(filePath, 'utf-8');
+    return allFiles.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
   /**
-   * Get file path for download
+   * Get content of a specific Terraform file (Legacy compatibility)
    */
-  static getTerraformFilePath(filename: string): string | null {
-    const filePath = path.join(this.outputDir, filename);
+  static async getTerraformFileContent(filename: string, projectId?: string): Promise<string | null> {
+    await this.ensureInitialized();
 
-    if (!fs.existsSync(filePath) || !filename.endsWith('.tf')) {
-      return null;
+    if (projectId) {
+      // Get file from specific project
+      return this.fileManager.getFileContent(projectId, filename);
     }
 
-    return filePath;
+    // Legacy behavior: search in all projects
+    const projects = this.fileManager.getUserProjects();
+    for (const project of projects) {
+      const content = this.fileManager.getFileContent(project.projectId, filename);
+      if (content) {
+        return content;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Get file path for download (Legacy compatibility)
+   */
+  static async getTerraformFilePath(filename: string, projectId?: string): Promise<string | null> {
+    await this.ensureInitialized();
+
+    if (projectId) {
+      // Get file from specific project
+      return this.fileManager.getFilePath(projectId, filename);
+    }
+
+    // Legacy behavior: search in all projects
+    const projects = this.fileManager.getUserProjects();
+    for (const project of projects) {
+      const filePath = this.fileManager.getFilePath(project.projectId, filename);
+      if (filePath) {
+        return filePath;
+      }
+    }
+
+    return null;
   }
 
   /**
@@ -64,82 +90,72 @@ export class FileService {
     terraformResult: TerraformGenerationResult,
     projectName: string = 'infrastructure'
   ): Promise<{ projectDir: string; files: string[] }> {
+    await this.ensureInitialized();
+
     console.log('💾 Saving generated Terraform files...');
 
-    // Create project directory
+    // Create project with timestamp for uniqueness
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const projectDir = path.join(this.outputDir, `${projectName}-${timestamp}`);
-    fs.mkdirSync(projectDir, { recursive: true });
+    const uniqueProjectId = `${projectName}-${timestamp}`;
 
-    const savedFiles: string[] = [];
-
-    // Save all generated files
+    // Convert TerraformGenerationResult files to Record<string, string>
+    const terraformFiles: Record<string, string> = {};
     for (const file of terraformResult.files) {
-      const filePath = path.join(projectDir, file.filename);
-      fs.writeFileSync(filePath, file.content);
-      savedFiles.push(file.filename);
-      console.log(`📁 Saved: ${file.filename}`);
+      terraformFiles[file.filename] = file.content;
     }
 
-    console.log(`✅ Saved ${savedFiles.length} Terraform files to ${projectDir}`);
+    // Create project using LocalFileManager
+    const projectInfo = await this.fileManager.createUserProject(uniqueProjectId, terraformFiles);
+
+    console.log(`✅ Saved ${terraformResult.files.length} Terraform files to ${projectInfo.projectPath}`);
 
     return {
-      projectDir: path.relative(process.cwd(), projectDir),
-      files: savedFiles
+      projectDir: projectInfo.projectPath,
+      files: terraformResult.files.map(f => f.filename)
     };
   }
 
   /**
-   * Get list of available projects (directories in output folder)
+   * Get list of available projects
    */
-  static getAvailableProjects(): Array<{
+  static async getAvailableProjects(): Promise<Array<{
     name: string;
     path: string;
     fileCount: number;
     createdAt: string;
     modifiedAt: string;
     size: number;
-  }> {
-    if (!fs.existsSync(this.outputDir)) {
-      return [];
-    }
+    hasState?: boolean;
+    hasTerraformDir?: boolean;
+  }>> {
+    await this.ensureInitialized();
 
-    return fs.readdirSync(this.outputDir, { withFileTypes: true })
-      .filter(dirent => dirent.isDirectory())
-      .map(dirent => {
-        const projectPath = path.join(this.outputDir, dirent.name);
-        const stats = fs.statSync(projectPath);
-
-        // Count terraform files in project
-        const files = fs.readdirSync(projectPath).filter(file => file.endsWith('.tf'));
-
-        // Calculate total size of all files
-        const totalSize = files.reduce((size, file) => {
-          const filePath = path.join(projectPath, file);
-          return size + fs.statSync(filePath).size;
-        }, 0);
-
-        return {
-          name: dirent.name,
-          path: path.relative(process.cwd(), projectPath),
-          fileCount: files.length,
-          createdAt: stats.birthtime.toISOString(),
-          modifiedAt: stats.mtime.toISOString(),
-          size: totalSize
-        };
-      })
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const projects = this.fileManager.getUserProjects();
+    return projects.map(project => ({
+      name: project.projectId,
+      path: project.projectPath,
+      fileCount: project.fileCount,
+      createdAt: project.createdAt,
+      modifiedAt: project.modifiedAt,
+      size: project.size,
+      hasState: project.hasState,
+      hasTerraformDir: project.hasTerraformDir
+    }));
   }
 
   /**
    * Create a ZIP archive of all Terraform files in a project
    */
   static async createProjectZip(projectName: string): Promise<Buffer | null> {
-    const projectPath = path.join(this.outputDir, projectName);
+    await this.ensureInitialized();
 
-    if (!fs.existsSync(projectPath)) {
+    const projectStructure = this.fileManager.getWorkspaceStructure(projectName);
+
+    if (!projectStructure || projectStructure.generatedFiles.length === 0) {
       return null;
     }
+
+    const generatedPath = this.fileManager.getGeneratedPath('root-user', projectName);
 
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];
@@ -149,16 +165,9 @@ export class FileService {
       archive.on('end', () => resolve(Buffer.concat(chunks)));
       archive.on('error', reject);
 
-      // Add all .tf files from the project directory
-      const files = fs.readdirSync(projectPath).filter(file => file.endsWith('.tf'));
-
-      if (files.length === 0) {
-        resolve(null);
-        return;
-      }
-
-      files.forEach(file => {
-        const filePath = path.join(projectPath, file);
+      // Add all .tf files from the generated directory
+      projectStructure.generatedFiles.forEach(file => {
+        const filePath = path.join(generatedPath, file);
         archive.file(filePath, { name: file });
       });
 
@@ -169,26 +178,27 @@ export class FileService {
   /**
    * Get project files (for listing files in a specific project)
    */
-  static getProjectFiles(projectName: string): TerraformFile[] {
-    const projectPath = path.join(this.outputDir, projectName);
+  static async getProjectFiles(projectName: string): Promise<TerraformFile[]> {
+    await this.ensureInitialized();
 
-    if (!fs.existsSync(projectPath)) {
-      return [];
-    }
+    return this.fileManager.getProjectFiles(projectName);
+  }
 
-    return fs.readdirSync(projectPath)
-      .filter(file => file.endsWith('.tf'))
-      .map(file => {
-        const filePath = path.join(projectPath, file);
-        const stats = fs.statSync(filePath);
-        return {
-          name: file,
-          path: path.relative(process.cwd(), filePath),
-          size: stats.size,
-          createdAt: stats.birthtime.toISOString(),
-          modifiedAt: stats.mtime.toISOString()
-        };
-      })
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  /**
+   * Get workspace structure for a project
+   */
+  static async getProjectStructure(projectName: string) {
+    await this.ensureInitialized();
+
+    return this.fileManager.getWorkspaceStructure(projectName);
+  }
+
+  /**
+   * Delete a project
+   */
+  static async deleteProject(projectName: string): Promise<boolean> {
+    await this.ensureInitialized();
+
+    return this.fileManager.deleteProject(projectName);
   }
 }

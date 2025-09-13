@@ -73,6 +73,12 @@ router.get('/projects', TerraformController.getProjects);
 // Get files in a specific project
 router.get('/projects/:projectName/files', TerraformController.getProjectFiles);
 
+// Get project workspace structure
+router.get('/projects/:projectName/structure', TerraformController.getProjectStructure);
+
+// Delete a project
+router.delete('/projects/:projectName', TerraformController.deleteProject);
+
 // Download project as ZIP
 router.get('/projects/:projectName/download', TerraformController.downloadProjectZip);
 

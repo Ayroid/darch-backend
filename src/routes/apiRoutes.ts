@@ -9,10 +9,31 @@ const router = Router();
 // =====================================
 
 // Generate Terraform from architecture data
-router.post('/generate-terraform',
+router.post('/terraform/generate',
   ValidationMiddleware.validateArchitectureData,
   TerraformController.generateModularTerraform
 );
+
+// Generate Terraform plan (dry run - quick preview)
+router.post('/terraform/plan',
+  ValidationMiddleware.validateArchitectureData,
+  TerraformController.generateTerraformPlan
+);
+
+// Start async Terraform plan execution with actual terraform commands
+router.post('/terraform/plan-execute',
+  ValidationMiddleware.validateArchitectureData,
+  TerraformController.startTerraformPlanExecution
+);
+
+// Get terraform plan job status (polling)
+router.get('/terraform/plan-status/:jobId', TerraformController.getTerraformPlanStatus);
+
+// Get all terraform plan jobs
+router.get('/terraform/plan-jobs', TerraformController.getAllTerraformPlanJobs);
+
+// Delete completed terraform plan job
+router.delete('/terraform/plan-jobs/:jobId', TerraformController.deleteTerraformPlanJob);
 
 // Validate architecture design
 router.post('/validate/architecture',
@@ -24,12 +45,6 @@ router.post('/validate/architecture',
 router.post('/validate/dependencies',
   ValidationMiddleware.validateArchitectureData,
   TerraformController.validateDependencies
-);
-
-// Generate Terraform plan (dry run)
-router.post('/terraform/plan',
-  ValidationMiddleware.validateArchitectureData,
-  TerraformController.generateTerraformPlan
 );
 
 // =====================================

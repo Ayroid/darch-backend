@@ -1,130 +1,126 @@
-# 🚀 Frontend API Integration Guide
+# Frontend API Integration### 4. Job Status Polling - CORRECTED & STREAMING LOGS
+- **GET** `/api/terraform/plan-status/:jobId` ❌ Was: `/api/terraform/jobs/:jobId`
+- **Purpose**: Poll job status for async operations with **streaming terraform logs**
+- **Response**: `{ success: true, data: { jobId, status, progress, logs: string[], rawOutput?, error? } }`
 
-## Terraform Generation API Documentation
+## 🆕 NEW: Streaming Terraform Logs
 
-This guide provides complete instructions for integrating the Terraform generation API into your frontend application.
+The job polling now returns **real-time terraform command output** via the `logs` array:
 
----
+## ⚠️ IMPORTANT: Safe Property Access
 
-## 📡 **API Endpoint**
-
-**Base URL**: `http://localhost:5000` (development)  
-**Endpoint**: `POST /api/generate-terraform`  
-**Content-Type**: `application/json`
-
----
-
-## 📥 **Request Format**
-
-### **TypeScript Interface**
+**Fix for "Cannot read properties of undefined (reading 'totalResources')" error:**
 
 ```typescript
-interface TerraformAPIRequest {
+// ❌ WRONG - Will cause error when job is still running
+const totalResources = finalResult.result.resourceSummary.totalResources;
+
+// ✅ CORRECT - Safe access with null checks
+const totalResources = finalResult?.result?.resourceSummary?.totalResources || 0;
+
+// ✅ OR - Check status first
+if (jobStatus.status === 'completed' && jobStatus.result?.resourceSummary) {
+  const totalResources = jobStatus.result.resourceSummary.totalResources;
+}
+```de - Correct Endpoints
+
+This guide provides the **correct API endpoints** for integrating with the Darch Terraform backend.
+
+## Backend URL
+```javascript
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+```
+
+## ⚠️ CORRECT API Endpoints
+
+### 1. Generate Terraform
+- **POST** `/api/terraform/generate`
+- **Purpose**: Generate Terraform configuration files
+- **Response**: Project info, file counts, validation status (no file content)
+
+### 2. Quick Plan (Preview - No terraform init)
+- **POST** `/api/terraform/plan`
+- **Purpose**: Fast resource preview without terraform initialization
+- **Response**: Resource summary, cost estimates, warnings
+
+### 3. Full Plan (Async with terraform init) - CORRECTED
+- **POST** `/api/terraform/plan-execute` ❌ Was: `/api/terraform/plan-async`
+- **Purpose**: Start async terraform plan with actual terraform commands
+- **Response**: `{ success: true, data: { jobId: "uuid", estimatedDuration: 30 } }`
+
+### 4. Job Status Polling - CORRECTED
+- **GET** `/api/terraform/plan-status/:jobId` ❌ Was: `/api/terraform/jobs/:jobId`
+- **Purpose**: Poll job status for async operations
+- **Response**: `{ success: true, data: { jobId, status, progress, result?, error?, duration? } }`---
+
+## Request Format
+
+```typescript
+interface TerraformRequest {
   architectureData: {
     metadata: {
-      name: string;                    // Architecture name
-      description?: string;            // Optional description
-      version: string;                 // Version (e.g., "1.0.0")
-      createdAt: string;              // ISO date string
-      lastModified: string;           // ISO date string
-      provider: "aws" | "azure" | "gcp"; // Cloud provider
+      name: string;
+      version: string;
+      provider: "aws" | "azure" | "gcp";
+      createdAt: string;
+      lastModified: string;
     };
     nodes: Array<{
-      id: string;                     // Unique node identifier
-      nodeType: "awsContainer" | "awsService"; // Node type
-      resourceType: string;           // e.g., "aws-vpc", "aws-ec2"
-      name: string;                   // Display name
-      position: {
-        x: number;
-        y: number;
-      };
-      dimensions?: {                  // Optional
-        width: number;
-        height: number;
-      };
-      configuration: Record<string, any>; // Resource configuration
-      parentId?: string;              // Optional parent reference
-    }>;
-    connections: Array<{              // Can be empty array
       id: string;
-      source: string;
-      target: string;
-      type?: string;
+      nodeType: "awsContainer" | "awsService";
+      resourceType: string; // "aws-vpc", "aws-ec2", etc.
+      name: string;
+      position: { x: number; y: number };
+      configuration: Record<string, any>;
+      parentId?: string;
     }>;
-    variables?: Record<string, any>;  // Optional
-    outputs?: Record<string, any>;   // Optional
+    connections: Array<{
+      id: string; source: string; target: string;
+    }>;
   };
-  projectName: string;                // Output directory name
+  projectName: string;
 }
 ```
 
-### **Example Request**
+## Example Architecture Data
 
 ```json
 {
   "architectureData": {
     "metadata": {
-      "name": "My Web Application",
-      "description": "Simple web app infrastructure",
+      "name": "Web App",
       "version": "1.0.0",
-      "createdAt": "2025-09-10T18:00:00.000Z",
-      "lastModified": "2025-09-10T18:00:00.000Z",
-      "provider": "aws"
+      "provider": "aws",
+      "createdAt": "2025-09-13T08:00:00.000Z",
+      "lastModified": "2025-09-13T08:00:00.000Z"
     },
     "nodes": [
       {
-        "id": "vpc-main",
+        "id": "vpc-1",
         "nodeType": "awsContainer",
         "resourceType": "aws-vpc",
         "name": "Main VPC",
-        "position": { "x": 100, "y": 100 },
+        "position": {"x": 0, "y": 0},
         "configuration": {
           "cidrBlock": "10.0.0.0/16",
           "enableDnsSupport": true,
-          "enableDnsHostnames": true,
-          "tags": {
-            "Environment": "Production"
-          }
+          "enableDnsHostnames": true
         }
       },
       {
-        "id": "subnet-public",
-        "nodeType": "awsContainer",
-        "resourceType": "aws-public-subnet",
-        "name": "Public Subnet",
-        "position": { "x": 150, "y": 150 },
-        "configuration": {
-          "cidrBlock": "10.0.1.0/24",
-          "awsAvailabilityZone": "us-east-1a",
-          "mapPublicIpOnLaunch": true,
-          "tags": {
-            "Type": "Public"
-          }
-        },
-        "parentId": "vpc-main"
-      },
-      {
-        "id": "ec2-web",
+        "id": "ec2-1",
         "nodeType": "awsService",
         "resourceType": "aws-ec2",
         "name": "Web Server",
-        "position": { "x": 200, "y": 200 },
+        "position": {"x": 100, "y": 100},
         "configuration": {
           "instanceType": "t3.micro",
-          "amiId": "ami-0c55b159cbfafe1d0",
-          "subnetId": "subnet-public",
-          "associatePublicIpAddress": true,
-          "tags": {
-            "Name": "Web Server",
-            "Role": "WebServer"
-          }
+          "amiId": "ami-0c55b159cbfafe1d0"
         },
-        "parentId": "subnet-public"
+        "parentId": "vpc-1"
       }
     ],
-    "connections": [],
-    "variables": {},
-    "outputs": {}
+    "connections": []
   },
   "projectName": "my-web-app"
 }
@@ -132,751 +128,302 @@ interface TerraformAPIRequest {
 
 ---
 
-## 📤 **Response Format**
+## Response Formats
 
-### **Success Response**
-
+### Generate Response (`POST /terraform/generate`)
 ```typescript
-interface SuccessResponse {
+{
   success: true;
   data: {
-    terraformConfiguration: {
-      mainTf: string;              // main.tf file content
-      variablesTf: string;         // variables.tf file content
-      outputsTf: string;           // outputs.tf file content
-      terraformTfvars: string;     // terraform.tfvars file content
-      providersVersionsTf: string; // providers.tf file content
-    };
-    savedFiles: {
-      projectDir: string;          // Output directory path
-      files: string[];             // Generated file names
-    };
-    validation: {
-      valid: boolean;
-      errors: string[];
-    };
-    architectureValidation: {
-      valid: boolean;
-      errors: string[];
-      warnings: Array<{
-        type: string;
-        message: string;
-      }>;
-    };
-    moduleMapping: {
-      modulesGenerated: number;
-      dependencies: number;
-      warnings: string[];
-    };
-    projectName: string;
-    formatUsed: "frontend" | "legacy";
+    project: { name: string; path: string; generatedAt: string };
+    files: { generated: number; list: string[] };
+    validation: { syntaxValid: boolean; errors: string[] };
+    status: "success";
   };
   message: string;
-  timestamp: string;
 }
 ```
 
-### **Error Response**
-
+### Async Plan Response (`POST /terraform/plan-async`)
 ```typescript
-interface ErrorResponse {
-  success: false;
-  error: string;                   // Main error message
-  details?: string;                // Additional error details
-  timestamp: string;               // ISO date string
+{
+  success: true;
+  data: {
+    jobId: string;           // Use for polling
+    status: "processing";    // Initial status
+    estimatedDuration: 30;   // Seconds
+  };
+  message: "Plan job started";
 }
 ```
 
----
-
-## 🌐 **Frontend Implementation Examples**
-
-### **1. Simple Fetch Implementation**
-
+### Job Status Response (`GET /terraform/plan-status/{jobId}`) - WITH STREAMING LOGS
 ```typescript
-async function generateTerraform(
-  architectureData: any, 
-  projectName: string
-): Promise<{success: boolean, message: string}> {
-  try {
-    const response = await fetch('http://localhost:5000/api/generate-terraform', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        architectureData,
-        projectName
-      })
-    });
-
-    const result = await response.json();
-
-    if (result.success) {
-      return {
-        success: true,
-        message: `✅ Terraform configuration generated successfully! Files saved to: ${result.data.savedFiles.projectDir}`
-      };
-    } else {
-      return {
-        success: false,
-        message: `❌ Generation failed: ${result.error}${result.details ? ` - ${result.details}` : ''}`
-      };
-    }
-  } catch (error) {
-    return {
-      success: false,
-      message: `🚨 API call failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+{
+  success: true;
+  data: {
+    jobId: string;
+    status: "pending" | "running" | "completed" | "failed";
+    progress: number;        // 0-100
+    message: string;         // Current operation message
+    logs: string[];          // 🆕 STREAMING TERRAFORM OUTPUT LINES
+    rawOutput?: string;      // 🆕 Complete terraform output (when completed)
+    result?: {               // Simple result when completed
+      success: boolean;
+      message: string;
+      outputLines: number;
     };
-  }
-}
-
-// Usage
-const result = await generateTerraform(yourArchitectureData, "my-project");
-if (result.success) {
-  showSuccessMessage(result.message);
-} else {
-  showErrorMessage(result.message);
-}
-```
-
-### **2. Axios Implementation**
-
-```typescript
-import axios from 'axios';
-
-async function generateTerraform(architectureData: any, projectName: string) {
-  try {
-    const response = await axios.post('http://localhost:5000/api/generate-terraform', {
-      architectureData,
-      projectName
-    }, {
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (response.data.success) {
-      return {
-        success: true,
-        message: '✅ Terraform generated successfully!',
-        data: response.data.data
-      };
-    } else {
-      throw new Error(response.data.error);
-    }
-  } catch (error) {
-    if (axios.isAxiosError(error)) {
-      return {
-        success: false,
-        message: `❌ ${error.response?.data?.error || error.message}`,
-        data: null
-      };
-    } else {
-      return {
-        success: false,
-        message: `🚨 Unexpected error: ${error}`,
-        data: null
-      };
-    }
-  }
-}
-```
-
-### **3. React Hook**
-
-```typescript
-import { useState, useCallback } from 'react';
-
-interface TerraformResult {
-  success: boolean;
-  message: string;
-  data?: any;
-}
-
-export function useTerraformGenerator() {
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [result, setResult] = useState<TerraformResult | null>(null);
-
-  const generateTerraform = useCallback(async (
-    architectureData: any, 
-    projectName: string
-  ): Promise<TerraformResult> => {
-    setIsGenerating(true);
-    setResult(null);
-    
-    try {
-      const response = await fetch('http://localhost:5000/api/generate-terraform', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ architectureData, projectName })
-      });
-
-      const data = await response.json();
-      
-      const result: TerraformResult = {
-        success: data.success,
-        message: data.success 
-          ? '✅ Terraform generated successfully!' 
-          : `❌ ${data.error}`,
-        data: data.success ? data.data : null
-      };
-
-      setResult(result);
-      return result;
-    } catch (error) {
-      const result: TerraformResult = {
-        success: false,
-        message: `🚨 Failed to generate Terraform: ${error}`,
-        data: null
-      };
-
-      setResult(result);
-      return result;
-    } finally {
-      setIsGenerating(false);
-    }
-  }, []);
-
-  return { 
-    generateTerraform, 
-    isGenerating, 
-    result,
-    clearResult: () => setResult(null)
+    error?: string;          // When failed
+    createdAt: string;
+    updatedAt: string;
   };
 }
-
-// Usage in component
-function MyComponent() {
-  const { generateTerraform, isGenerating, result } = useTerraformGenerator();
-
-  const handleGenerate = async () => {
-    const result = await generateTerraform(architectureData, projectName);
-    
-    if (result.success) {
-      // Handle success
-      toast.success(result.message);
-    } else {
-      // Handle error
-      toast.error(result.message);
-    }
-  };
-
-  return (
-    <div>
-      <button 
-        onClick={handleGenerate} 
-        disabled={isGenerating}
-      >
-        {isGenerating ? 'Generating...' : 'Generate Terraform'}
-      </button>
-      
-      {result && (
-        <div className={result.success ? 'success' : 'error'}>
-          {result.message}
-        </div>
-      )}
-    </div>
-  );
-}
 ```
 
----
-
-## ✅ **Configuration Requirements**
-
-### **Keep Using Your Current Field Names!**
-
-✅ **Good News**: You can continue using your existing frontend field names. The backend will automatically transform them.
-
-**Frontend Format (Keep Using)**:
-```json
-{
-  "cidrBlock": "10.0.0.0/16",
-  "enableDnsSupport": true,
-  "instanceType": "t3.micro",
-  "amiId": "ami-0c55b159cbfafe1d0",
-  "awsAvailabilityZone": "us-east-1a"
-}
-```
-
-**Backend Format (Automatic Conversion)**:
-```json
-{
-  "cidr_block": "10.0.0.0/16",
-  "enable_dns_support": true,
-  "instance_type": "t3.micro",
-  "ami_id": "ami-0c55b159cbfafe1d0",
-  "availability_zone": "us-east-1a"
-}
-```
-
-### **Required Fields by Resource Type**
-
-| Resource Type | Required Fields |
-|---|---|
-| **aws-vpc** | `cidrBlock`, `enableDnsSupport`, `enableDnsHostnames` |
-| **aws-public-subnet** | `cidrBlock`, `awsAvailabilityZone`, `mapPublicIpOnLaunch` |
-| **aws-private-subnet** | `cidrBlock`, `awsAvailabilityZone`, `mapPublicIpOnLaunch` |
-| **aws-ec2** | `instanceType`, `amiId`, `subnetId` |
-| **aws-security-group** | `name`, `awsVpcId` |
-
-### **Optional but Recommended Fields**
-
-- **tags**: Use object format: `{"Environment": "Production", "Owner": "Team"}`
-- **description**: Meaningful descriptions for resources
-- **keyPairName**: For EC2 instances (if SSH access needed)
-
----
-
-## 🧪 **Testing**
-
-### **Test with cURL**
-
-```bash
-curl -X POST http://localhost:5000/api/generate-terraform \
-  -H "Content-Type: application/json" \
-  -d '{
-    "architectureData": {
-      "metadata": {
-        "name": "Test Architecture",
-        "version": "1.0.0",
-        "createdAt": "2025-09-10T18:00:00.000Z",
-        "lastModified": "2025-09-10T18:00:00.000Z",
-        "provider": "aws"
-      },
-      "nodes": [],
-      "connections": []
-    },
-    "projectName": "test-project"
-  }'
-```
-
-### **Expected Responses**
-
-**Success**:
+### Example Streaming Log Output:
 ```json
 {
   "success": true,
-  "message": "Modular Terraform configuration generated successfully",
-  "data": { /* ... */ }
+  "data": {
+    "jobId": "plan_1694594400000_abc123",
+    "status": "running",
+    "progress": 60,
+    "message": "Generating terraform plan...",
+    "logs": [
+      "2025-09-13T10:30:15.123Z: 🔍 Checking terraform installation...",
+      "2025-09-13T10:30:15.200Z: ✅ Terraform installation verified",
+      "2025-09-13T10:30:15.300Z: 📁 Preparing project files...",
+      "2025-09-13T10:30:15.400Z: 🔧 Terraform not initialized, running terraform init...",
+      "2025-09-13T10:30:16.000Z: 🔧 Initializing the backend...",
+      "2025-09-13T10:30:17.000Z: 🔧 Initializing provider plugins...",
+      "2025-09-13T10:30:18.000Z: ✅ Terraform init completed successfully",
+      "2025-09-13T10:30:18.100Z: 🔄 Starting terraform plan...",
+      "2025-09-13T10:30:19.000Z: 📄 Terraform used the selected providers to generate the following execution plan",
+      "2025-09-13T10:30:19.100Z: 📄 # module.vpc_75z69v.aws_vpc.this will be created",
+      "2025-09-13T10:30:19.200Z: 📄 + resource \"aws_vpc\" \"this\" {",
+      "2025-09-13T10:30:19.300Z: 📄 + cidr_block = \"10.0.0.0/16\""
+    ],
+    "createdAt": "2025-09-13T10:30:15.000Z",
+    "updatedAt": "2025-09-13T10:30:19.300Z"
+  }
 }
 ```
 
-**Error**:
-```json
+### Quick Plan Response (`POST /terraform/plan`)
+```typescript
 {
-  "success": false,
-  "error": "Architecture validation failed",
-  "details": "Required field 'cidrBlock' is missing for vpc"
+  success: true;
+  data: {
+    resourceSummary: { totalResources: number; resourceTypes: Record<string, number> };
+    costEstimate: { monthlyEstimate: number; breakdown: Record<string, number> };
+    modules: Array<{ name: string; source: string }>;
+    warnings: string[];
+  };
 }
 ```
 
----
+## Implementation Examples
 
-## 📦 **File Download API Endpoints**
-
-### **1. Download Project as ZIP**
-
-**Endpoint**: `GET /api/projects/{projectName}/download`  
-**Response**: Binary ZIP file  
-**Headers**: `Content-Type: application/zip`, `Content-Disposition: attachment`
-
+### 1. Async Plan with Streaming Logs (Recommended)
 ```typescript
-async function downloadProjectZip(projectName: string): Promise<Blob | null> {
-  try {
-    const response = await fetch(`http://localhost:5000/api/projects/${projectName}/download`);
-    
-    if (response.ok) {
-      return await response.blob();
-    } else {
-      console.error('Download failed:', response.statusText);
-      return null;
+async function generateAsyncPlanWithLogs(architectureData: any, projectName: string) {
+  // Start async plan job
+  const startResponse = await fetch('/api/terraform/plan-execute', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ architectureData, projectName })
+  });
+
+  const { data: { jobId } } = await startResponse.json();
+  let lastLogCount = 0;
+
+  // Simple 2-second polling with streaming logs
+  while (true) {
+    await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+
+    const statusResponse = await fetch(`/api/terraform/plan-status/${jobId}`);
+    const { data: job } = await statusResponse.json();
+
+    // Display new log entries since last poll
+    if (job.logs.length > lastLogCount) {
+      const newLogs = job.logs.slice(lastLogCount);
+      newLogs.forEach(log => console.log(log));
+      lastLogCount = job.logs.length;
     }
-  } catch (error) {
-    console.error('Download error:', error);
-    return null;
-  }
-}
 
-// Usage - trigger download in browser
-async function triggerDownload(projectName: string) {
-  const blob = await downloadProjectZip(projectName);
-  
-  if (blob) {
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${projectName}-terraform.zip`;
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
-  }
-}
-```
+    console.log(`Job ${jobId}: ${job.status} (${job.progress}%) - ${job.message}`);
 
-### **2. List Available Projects**
+    if (job.status === 'completed') {
+      console.log('✅ Plan completed! Full output available in job.rawOutput');
 
-**Endpoint**: `GET /api/projects`  
-**Response**: JSON list of all generated projects
-
-```typescript
-interface Project {
-  name: string;
-  path: string;
-  fileCount: number;
-  createdAt: string;
-  modifiedAt: string;
-  size: number;
-  downloadUrl: string;
-  filesUrl: string;
-}
-
-async function getProjects(): Promise<Project[]> {
-  try {
-    const response = await fetch('http://localhost:5000/api/projects');
-    const result = await response.json();
-    
-    if (result.success) {
-      return result.data.projects;
-    } else {
-      console.error('Failed to fetch projects:', result.error);
-      return [];
-    }
-  } catch (error) {
-    console.error('API error:', error);
-    return [];
-  }
-}
-```
-
-### **3. List Files in Specific Project**
-
-**Endpoint**: `GET /api/projects/{projectName}/files`  
-**Response**: JSON list of Terraform files in the project
-
-```typescript
-interface TerraformFile {
-  name: string;
-  path: string;
-  size: number;
-  createdAt: string;
-  modifiedAt: string;
-}
-
-async function getProjectFiles(projectName: string): Promise<TerraformFile[]> {
-  try {
-    const response = await fetch(`http://localhost:5000/api/projects/${projectName}/files`);
-    const result = await response.json();
-    
-    if (result.success) {
-      return result.data.files;
-    } else {
-      console.error('Failed to fetch project files:', result.error);
-      return [];
-    }
-  } catch (error) {
-    console.error('API error:', error);
-    return [];
-  }
-}
-```
-
-### **4. Download Individual File**
-
-**Endpoint**: `GET /api/terraform-files/{filename}/download`  
-**Response**: Individual file download
-
-```typescript
-async function downloadTerraformFile(filename: string): Promise<Blob | null> {
-  try {
-    const response = await fetch(`http://localhost:5000/api/terraform-files/${filename}/download`);
-    
-    if (response.ok) {
-      return await response.blob();
-    } else {
-      console.error('File download failed:', response.statusText);
-      return null;
-    }
-  } catch (error) {
-    console.error('Download error:', error);
-    return null;
-  }
-}
-```
-
----
-
-## 🎯 **Complete Frontend Integration Example**
-
-### **React Component with Download Functionality**
-
-```typescript
-import React, { useState, useEffect } from 'react';
-
-interface Project {
-  name: string;
-  fileCount: number;
-  createdAt: string;
-  size: number;
-  downloadUrl: string;
-}
-
-export function TerraformManager() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isDownloading, setIsDownloading] = useState<string | null>(null);
-
-  // Load projects on component mount
-  useEffect(() => {
-    loadProjects();
-  }, []);
-
-  const loadProjects = async () => {
-    setIsLoading(true);
-    try {
-      const response = await fetch('http://localhost:5000/api/projects');
-      const result = await response.json();
-      
-      if (result.success) {
-        setProjects(result.data.projects);
+      // ⚠️ SAFE ACCESS: Always check if result exists
+      if (job.result && job.result.resourceSummary) {
+        console.log(`Resources: ${job.result.resourceSummary.totalResources}`);
       }
-    } catch (error) {
-      console.error('Failed to load projects:', error);
-    } finally {
-      setIsLoading(false);
+
+      return { success: true, data: job.result, rawOutput: job.rawOutput };
     }
-  };
 
-  const downloadProject = async (projectName: string) => {
-    setIsDownloading(projectName);
-    
-    try {
-      const response = await fetch(`http://localhost:5000/api/projects/${projectName}/download`);
-      
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${projectName}-terraform.zip`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-      } else {
-        alert('Download failed');
-      }
-    } catch (error) {
-      console.error('Download error:', error);
-      alert('Download failed');
-    } finally {
-      setIsDownloading(null);
+    if (job.status === 'failed') {
+      console.log('❌ Plan failed:', job.error);
+      return { success: false, error: job.error };
     }
-  };
 
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
+    // Continue polling if still processing
+  }
+}
+```
 
-  const formatDate = (dateString: string): string => {
-    return new Date(dateString).toLocaleDateString() + ' ' + 
-           new Date(dateString).toLocaleTimeString();
-  };
+### 2. Quick Plan (No Terraform Init)
+```typescript
+async function generateQuickPlan(architectureData: any, projectName: string) {
+  const response = await fetch('/api/terraform/plan', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ architectureData, projectName })
+  });
 
-  if (isLoading) {
-    return <div>Loading projects...</div>;
+  return await response.json();
+}
+```
+
+### 3. Generate Terraform Files
+```typescript
+async function generateTerraform(architectureData: any, projectName: string) {
+  const response = await fetch('/api/terraform/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ architectureData, projectName })
+  });
+
+  return await response.json();
+}
+```
+
+### 4. Complete Workflow (Plan → Generate)
+```typescript
+async function fullTerraformWorkflow(architectureData: any, projectName: string) {
+  // 1. Start async plan with terraform init
+  const planResult = await generateAsyncPlan(architectureData, projectName);
+
+  if (!planResult.success) {
+    throw new Error(`Plan failed: ${planResult.error}`);
   }
 
-  return (
-    <div className="terraform-manager">
-      <h2>Generated Terraform Projects</h2>
-      
-      <button onClick={loadProjects} disabled={isLoading}>
-        {isLoading ? 'Refreshing...' : 'Refresh'}
-      </button>
+  // 2. Show plan summary to user
+  const { resourceSummary, costEstimate } = planResult.data;
+  console.log(`Plan: ${resourceSummary.totalResources} resources, $${costEstimate.monthlyEstimate}/month`);
 
-      {projects.length === 0 ? (
-        <p>No projects found. Generate some Terraform configurations first!</p>
-      ) : (
-        <div className="projects-list">
-          {projects.map((project) => (
-            <div key={project.name} className="project-card">
-              <h3>{project.name}</h3>
-              <div className="project-info">
-                <p><strong>Files:</strong> {project.fileCount}</p>
-                <p><strong>Size:</strong> {formatFileSize(project.size)}</p>
-                <p><strong>Created:</strong> {formatDate(project.createdAt)}</p>
-              </div>
-              <button
-                onClick={() => downloadProject(project.name)}
-                disabled={isDownloading === project.name}
-                className="download-btn"
-              >
-                {isDownloading === project.name ? (
-                  '⬇️ Downloading...'
-                ) : (
-                  '📦 Download ZIP'
-                )}
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-```
+  // 3. Generate files if user approves
+  const generateResult = await generateTerraform(architectureData, projectName);
 
-### **Styling (CSS)**
-
-```css
-.terraform-manager {
-  padding: 20px;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.projects-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 20px;
-  margin-top: 20px;
-}
-
-.project-card {
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  padding: 16px;
-  background: #f9f9f9;
-}
-
-.project-card h3 {
-  margin: 0 0 12px 0;
-  color: #333;
-}
-
-.project-info p {
-  margin: 4px 0;
-  color: #666;
-  font-size: 14px;
-}
-
-.download-btn {
-  background: #007bff;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 4px;
-  cursor: pointer;
-  margin-top: 12px;
-}
-
-.download-btn:hover:not(:disabled) {
-  background: #0056b3;
-}
-
-.download-btn:disabled {
-  background: #ccc;
-  cursor: not-allowed;
-}
-```
-
----
-
-## 📋 **API Endpoints Summary**
-
-| Method | Endpoint | Purpose | Response Type |
-|--------|----------|---------|---------------|
-| `POST` | `/api/generate-terraform` | Generate Terraform from architecture | JSON |
-| `GET` | `/api/projects` | List all generated projects | JSON |
-| `GET` | `/api/projects/{name}/files` | List files in specific project | JSON |
-| `GET` | `/api/projects/{name}/download` | Download project as ZIP | Binary (ZIP) |
-| `GET` | `/api/terraform-files` | List all terraform files | JSON |
-| `GET` | `/api/terraform-files/{filename}` | Get file content | JSON |
-| `GET` | `/api/terraform-files/{filename}/download` | Download individual file | Binary |
-| `GET` | `/health` | Health check | JSON |
-
----
-
-## 🧪 **Testing the Download Endpoints**
-
-### **Test Project List**
-```bash
-curl -s http://localhost:5000/api/projects | jq .
-```
-
-### **Test Project Files**
-```bash
-curl -s http://localhost:5000/api/projects/project-1-2025-09-10T18-14-24-421Z/files | jq .
-```
-
-### **Test ZIP Download**
-```bash
-curl -o terraform-project.zip http://localhost:5000/api/projects/project-1-2025-09-10T18-14-24-421Z/download
-```
-
-### **Test Individual File Download**
-```bash
-curl -o main.tf http://localhost:5000/api/terraform-files/main.tf/download
-```
-
----
-
-## ⚠️ **Error Handling**
-
-### **Common Error Types**
-
-1. **Validation Errors**: Missing required fields
-2. **Network Errors**: API unavailable
-3. **Server Errors**: Internal processing errors
-
-### **Error Handling Pattern**
-
-```typescript
-try {
-  const result = await generateTerraform(data, projectName);
-  
-  if (result.success) {
-    // Show success notification
-    showToast('✅ Terraform generated successfully!', 'success');
+  if (generateResult.success) {
+    console.log(`Generated ${generateResult.data.files.generated} files at ${generateResult.data.project.path}`);
+    return generateResult.data;
   } else {
-    // Show error notification
-    showToast(`❌ ${result.message}`, 'error');
+    throw new Error(`Generation failed: ${generateResult.error}`);
   }
-} catch (error) {
-  // Handle network/unexpected errors
-  showToast('🚨 Unable to connect to the server', 'error');
 }
 ```
 
----
+## Configuration Requirements
 
-## 🚀 **Integration Checklist**
+### Required Fields by Resource
+| Resource Type | Required Configuration Fields |
+|---|---|
+| `aws-vpc` | `cidrBlock`, `enableDnsSupport`, `enableDnsHostnames` |
+| `aws-public-subnet` | `cidrBlock`, `awsAvailabilityZone`, `mapPublicIpOnLaunch` |
+| `aws-private-subnet` | `cidrBlock`, `awsAvailabilityZone`, `mapPublicIpOnLaunch` |
+| `aws-ec2` | `instanceType`, `amiId`, `subnetId` |
+| `aws-security-group` | `name`, `awsVpcId` |
 
-- [ ] Set up API endpoint URL
-- [ ] Implement request/response interfaces
-- [ ] Add error handling for network issues
-- [ ] Add loading states for UI
-- [ ] Test with minimal architecture data
-- [ ] Test with complex architecture data
-- [ ] Add success/error notifications
-- [ ] Handle validation errors gracefully
+### Field Name Conversion
+Frontend camelCase is automatically converted to Terraform snake_case:
+- `cidrBlock` → `cidr_block`
+- `enableDnsSupport` → `enable_dns_support`
+- `instanceType` → `instance_type`
 
----
+## Testing Examples
 
-## 📞 **Support**
+### Start Async Plan
+```bash
+curl -X POST http://localhost:5000/api/terraform/plan-async \
+  -H "Content-Type: application/json" \
+  -d '{"architectureData": {...}, "projectName": "test"}'
+# Response: {"success": true, "data": {"jobId": "job-123", "status": "processing"}}
+```
 
-If you encounter any issues:
+### Poll Job Status
+```bash
+curl http://localhost:5000/api/terraform/jobs/job-123
+# Response: {"success": true, "data": {"status": "completed", "result": {...}}}
+```
 
-1. **Check the API is running**: `curl http://localhost:5000/health`
-2. **Validate your JSON**: Ensure all required fields are present
-3. **Check browser console**: Look for network errors
-4. **Review the error message**: It will indicate missing fields or validation issues
+### Generate Files
+```bash
+curl -X POST http://localhost:5000/api/terraform/generate \
+  -H "Content-Type: application/json" \
+  -d '{"architectureData": {...}, "projectName": "test"}'
+```
 
-The backend handles all field transformations automatically, so focus on sending your architecture data in your current format! 🎉
+### Download Project
+```bash
+curl -o project.zip http://localhost:5000/api/projects/test-2025-09-13T08-01-11-036Z/download
+```
+
+## Core API Endpoints
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `POST` | `/terraform/plan-async` | Start async plan with terraform init |
+| `GET` | `/terraform/jobs/{jobId}` | Poll async job status |
+| `POST` | `/terraform/plan` | Quick plan preview (sync) |
+| `POST` | `/terraform/generate` | Generate Terraform files |
+| `GET` | `/projects` | List generated projects |
+| `GET` | `/projects/{name}/download` | Download project ZIP |
+
+## Key Features
+
+### Async Plan Process
+- Runs `terraform init` automatically
+- Returns job ID for polling
+- Includes progress updates
+- Better for complex architectures
+
+### Quick Plan Process
+- Fast preview without terraform init
+- Good for simple validation
+- Immediate response
+
+### File Generation
+- Creates complete Terraform workspace
+- Includes all required files
+- Ready for terraform commands
+
+## Error Handling
+```typescript
+if (!response.success) {
+  throw new Error(response.error);
+}
+```
+
+## Essential Usage Pattern
+1. Start async plan: `POST /terraform/plan-async` → Returns `{jobId: "job-123"}`
+2. Poll every 2 seconds: `GET /terraform/jobs/{jobId}` → Until `status: "completed"`
+3. Generate files: `POST /terraform/generate` → Returns project info
+4. Download: `GET /projects/{name}/download` → ZIP file
+
+## Simple Polling Implementation
+```typescript
+// Poll job status every 2 seconds until completion
+async function pollJob(jobId: string) {
+  while (true) {
+    await new Promise(r => setTimeout(r, 2000)); // Wait 2s
+
+    const response = await fetch(`/api/terraform/jobs/${jobId}`);
+    const { data: job } = await response.json();
+
+    if (job.status !== 'processing') return job;
+  }
+}
+```

@@ -3,6 +3,7 @@ import cors from 'cors';
 import { ConfigUtils } from './utils/ConfigUtils.js';
 import { LoggingMiddleware } from './middleware/LoggingMiddleware.js';
 import { ErrorMiddleware } from './middleware/ErrorMiddleware.js';
+import { TerraformExecutionService } from './services/TerraformExecutionService.js';
 import routes from './routes/index.js';
 
 export class App {
@@ -15,6 +16,7 @@ export class App {
     this.initializeMiddleware();
     this.initializeRoutes();
     this.initializeErrorHandling();
+    this.initializeJobCleanup();
   }
 
   private initializeMiddleware(): void {
@@ -47,6 +49,13 @@ export class App {
   private initializeErrorHandling(): void {
     // Global error handler
     this.app.use(ErrorMiddleware.handle);
+  }
+
+  private initializeJobCleanup(): void {
+    // Clean up completed jobs every 10 minutes
+    setInterval(() => {
+      TerraformExecutionService.cleanupCompletedJobs();
+    }, 10 * 60 * 1000);
   }
 
   public start(): void {

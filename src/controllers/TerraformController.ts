@@ -8,6 +8,7 @@ import { ModuleMapperService } from '../services/ModuleMapperService.js';
 import { ModularTerraformGeneratorService } from '../services/ModularTerraformGeneratorService.js';
 import { ModuleRegistryService } from '../services/ModuleRegistryService.js';
 import { FileService } from '../services/FileService.js';
+import { TerraformExecutionService } from '../services/TerraformExecutionService.js';
 import { ResponseView } from '../views/ResponseView.js';
 
 export class TerraformController {
@@ -129,21 +130,35 @@ export class TerraformController {
       );
 
       const response = ResponseView.success({
-        terraformConfiguration: terraformResult,
-        savedFiles,
-        validation: validationResult,
-        architectureValidation: parsedArchitecture.validation,
+        project: {
+          name: projectName,
+          path: savedFiles.projectDir,
+          generatedAt: new Date().toISOString()
+        },
+        files: {
+          generated: savedFiles.files.length,
+          list: savedFiles.files
+        },
+        validation: {
+          syntaxValid: validationResult.valid,
+          errors: validationResult.errors
+        },
+        architectureValidation: {
+          valid: parsedArchitecture.validation.valid,
+          errorCount: parsedArchitecture.validation.errors.length,
+          warningCount: parsedArchitecture.validation.warnings?.length || 0
+        },
         moduleMapping: {
           modulesGenerated: mappingResult.modules.length,
           dependencies: mappingResult.dependencies.length,
           warnings: mappingResult.warnings
         },
-        projectName,
         formatUsed: TerraformController.isFrontendFormat(architectureData)
           ? 'frontend'
           : TerraformController.isCleanFormat(architectureData)
             ? 'clean'
-            : 'legacy'
+            : 'legacy',
+        status: 'success'
       }, 'Modular Terraform configuration generated successfully');
 
       res.json(response);
@@ -358,7 +373,7 @@ export class TerraformController {
   }
 
   /**
-   * Generate Terraform plan preview
+   * Generate Terraform plan preview (quick/sync version)
    */
   static async generateTerraformPlan(req: Request, res: Response): Promise<void> {
     try {
@@ -373,7 +388,7 @@ export class TerraformController {
         return;
       }
 
-      console.log('📋 Generating Terraform plan preview...');
+      console.log('📋 Generating Terraform plan preview (quick)...');
 
       // Parse and map architecture
       const parsedArchitecture = ArchitectureParserService.parseArchitecture(architectureData);
@@ -401,6 +416,207 @@ export class TerraformController {
       console.error('❌ Error generating Terraform plan:', error);
       const errorResponse = ResponseView.error(
         'Failed to generate Terraform plan',
+        error instanceof Error ? error.message : 'Unknown error'
+      );
+      res.status(500).json(errorResponse);
+    }
+  }
+
+  /**
+   * Start async Terraform plan with actual terraform execution
+   */
+  static async startTerraformPlanExecution(req: Request, res: Response): Promise<void> {
+    try {
+      const { architectureData, projectName = 'infrastructure' }: {
+        architectureData: ArchitectureData | CleanArchitectureData,
+        projectName?: string
+      } = req.body;
+
+      if (!architectureData) {
+        const errorResponse = ResponseView.error('Architecture data is required');
+        res.status(400).json(errorResponse);
+        return;
+      }
+
+      console.log('🚀 Starting async Terraform plan execution...');
+
+      // First generate the terraform files
+      let processedArchitectureData: ArchitectureData;
+
+      if (TerraformController.isFrontendFormat(architectureData)) {
+        const transformationResult = FrontendArchitectureTransformerService.transformToBackendFormat(architectureData as any);
+        if (transformationResult.errors.length > 0) {
+          const errorResponse = ResponseView.error(
+            'Frontend architecture transformation failed',
+            transformationResult.errors.join('; ')
+          );
+          res.status(400).json(errorResponse);
+          return;
+        }
+        processedArchitectureData = transformationResult.transformed;
+      } else if (TerraformController.isCleanFormat(architectureData)) {
+        processedArchitectureData = ArchitectureConverterService.convertToLegacy(
+          architectureData as CleanArchitectureData
+        );
+      } else {
+        processedArchitectureData = architectureData as ArchitectureData;
+      }
+
+      const parsedArchitecture = ArchitectureParserService.parseArchitecture(processedArchitectureData);
+
+      if (!parsedArchitecture.validation.valid) {
+        const errorResponse = ResponseView.error(
+          'Architecture validation failed',
+          parsedArchitecture.validation.errors.map(e => e.message).join('; ')
+        );
+        res.status(400).json(errorResponse);
+        return;
+      }
+
+      const mappingResult = await ModuleMapperService.mapArchitectureToModules(parsedArchitecture);
+      const terraformResult = ModularTerraformGeneratorService.generateTerraformConfiguration(
+        mappingResult,
+        parsedArchitecture.metadata,
+        projectName
+      );
+
+      // Save files to temporary location
+      const savedFiles = await FileService.saveGeneratedTerraformFiles(terraformResult, projectName);
+
+      // Start async terraform plan execution
+      const jobId = await TerraformExecutionService.startTerraformPlan(
+        savedFiles.projectDir,
+        processedArchitectureData,
+        projectName
+      );
+
+      const response = ResponseView.success({
+        jobId,
+        status: 'started',
+        message: 'Terraform plan execution started',
+        projectPath: savedFiles.projectDir,
+        pollUrl: `/api/terraform/plan-status/${jobId}`
+      }, 'Terraform plan execution started successfully');
+
+      res.json(response);
+
+    } catch (error) {
+      console.error('❌ Error starting Terraform plan execution:', error);
+      const errorResponse = ResponseView.error(
+        'Failed to start Terraform plan execution',
+        error instanceof Error ? error.message : 'Unknown error'
+      );
+      res.status(500).json(errorResponse);
+    }
+  }
+
+  /**
+   * Get terraform plan job status (polling endpoint)
+   */
+  static async getTerraformPlanStatus(req: Request, res: Response): Promise<void> {
+    try {
+      const { jobId } = req.params;
+
+      if (!jobId) {
+        const errorResponse = ResponseView.error('Job ID is required');
+        res.status(400).json(errorResponse);
+        return;
+      }
+
+      const jobStatus = TerraformExecutionService.getJobStatus(jobId);
+
+      if (!jobStatus) {
+        const errorResponse = ResponseView.error('Job not found');
+        res.status(404).json(errorResponse);
+        return;
+      }
+
+      const response = ResponseView.success({
+        jobId: jobStatus.id,
+        status: jobStatus.status,
+        progress: jobStatus.progress,
+        message: jobStatus.message,
+        result: jobStatus.result,
+        error: jobStatus.error,
+        createdAt: jobStatus.createdAt,
+        updatedAt: jobStatus.updatedAt,
+        logs: jobStatus.logs || [],  // Include streaming logs
+        rawOutput: jobStatus.rawOutput  // Include raw terraform output
+      }, `Job ${jobStatus.status}`);
+
+      res.json(response);
+
+    } catch (error) {
+      console.error('❌ Error getting plan status:', error);
+      const errorResponse = ResponseView.error(
+        'Failed to get plan status',
+        error instanceof Error ? error.message : 'Unknown error'
+      );
+      res.status(500).json(errorResponse);
+    }
+  }
+
+  /**
+   * Get all terraform plan jobs
+   */
+  static async getAllTerraformPlanJobs(req: Request, res: Response): Promise<void> {
+    try {
+      const jobs = TerraformExecutionService.getAllJobs();
+
+      const response = ResponseView.success({
+        jobs: jobs.map(job => ({
+          jobId: job.id,
+          status: job.status,
+          progress: job.progress,
+          message: job.message,
+          createdAt: job.createdAt,
+          updatedAt: job.updatedAt
+        })),
+        totalJobs: jobs.length
+      }, 'Retrieved all terraform plan jobs');
+
+      res.json(response);
+
+    } catch (error) {
+      console.error('❌ Error getting all plan jobs:', error);
+      const errorResponse = ResponseView.error(
+        'Failed to get plan jobs',
+        error instanceof Error ? error.message : 'Unknown error'
+      );
+      res.status(500).json(errorResponse);
+    }
+  }
+
+  /**
+   * Delete completed terraform plan job
+   */
+  static async deleteTerraformPlanJob(req: Request, res: Response): Promise<void> {
+    try {
+      const { jobId } = req.params;
+
+      if (!jobId) {
+        const errorResponse = ResponseView.error('Job ID is required');
+        res.status(400).json(errorResponse);
+        return;
+      }
+
+      const deleted = TerraformExecutionService.deleteJob(jobId);
+
+      if (deleted) {
+        const response = ResponseView.success({
+          jobId,
+          deleted: true
+        }, 'Job deleted successfully');
+        res.json(response);
+      } else {
+        const errorResponse = ResponseView.error('Job not found or could not be deleted');
+        res.status(404).json(errorResponse);
+      }
+
+    } catch (error) {
+      console.error('❌ Error deleting plan job:', error);
+      const errorResponse = ResponseView.error(
+        'Failed to delete plan job',
         error instanceof Error ? error.message : 'Unknown error'
       );
       res.status(500).json(errorResponse);

@@ -62,7 +62,7 @@ export class App {
     this.app.listen(this.port, () => {
       console.log(`🚀 Backend server running on http://localhost:${this.port}`);
       console.log(`📊 Health check: http://localhost:${this.port}/health`);
-      console.log(`🔧 Terraform API: http://localhost:${this.port}/api/generate-terraform`);
+      console.log(`🔧 Terraform API: http://localhost:${this.port}/api/terraform/generate`);
       console.log(`🌍 Environment: ${ConfigUtils.isDevelopment() ? 'Development' : 'Production'}`);
     });
   }

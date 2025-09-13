@@ -1,8 +1,6 @@
 import { Request, Response } from 'express';
 import { ArchitectureData } from '../models/Architecture.js';
-import { CleanArchitectureData } from '../models/CleanArchitecture.js';
 import { ArchitectureParserService } from '../services/ArchitectureParserService.js';
-import { ArchitectureConverterService } from '../services/ArchitectureConverterService.js';
 import { FrontendArchitectureTransformerService } from '../services/FrontendArchitectureTransformerService.js';
 import { ModuleMapperService } from '../services/ModuleMapperService.js';
 import { ModularTerraformGeneratorService } from '../services/ModularTerraformGeneratorService.js';
@@ -15,12 +13,11 @@ export class TerraformController {
 
   /**
    * Generate modular Terraform configuration from architecture data
-   * Supports both legacy and clean architecture data formats
    */
   static async generateModularTerraform(req: Request, res: Response): Promise<void> {
     try {
       const { architectureData, projectName = 'infrastructure' }: {
-        architectureData: ArchitectureData | CleanArchitectureData,
+        architectureData: ArchitectureData,
         projectName?: string
       } = req.body;
 
@@ -65,26 +62,6 @@ export class TerraformController {
         processedArchitectureData = transformationResult.transformed;
         console.log(`✅ Frontend transformation completed: ${transformationResult.mappings.length} resources transformed`);
 
-      } else if (TerraformController.isCleanFormat(architectureData)) {
-        console.log('🔄 Detected clean format, converting to legacy format...');
-
-        // Validate clean format first
-        const cleanValidation = ArchitectureConverterService.validateCleanArchitecture(
-          architectureData as CleanArchitectureData
-        );
-
-        if (!cleanValidation.valid) {
-          const errorResponse = ResponseView.error(
-            'Clean architecture validation failed',
-            cleanValidation.errors.join('; ')
-          );
-          res.status(400).json(errorResponse);
-          return;
-        }
-
-        processedArchitectureData = ArchitectureConverterService.convertToLegacy(
-          architectureData as CleanArchitectureData
-        );
       } else {
         console.log('📄 Detected legacy format, proceeding...');
         processedArchitectureData = architectureData as ArchitectureData;
@@ -155,9 +132,7 @@ export class TerraformController {
         },
         formatUsed: TerraformController.isFrontendFormat(architectureData)
           ? 'frontend'
-          : TerraformController.isCleanFormat(architectureData)
-            ? 'clean'
-            : 'legacy',
+          : 'legacy',
         status: 'success'
       }, 'Modular Terraform configuration generated successfully');
 
@@ -428,7 +403,7 @@ export class TerraformController {
   static async startTerraformPlanExecution(req: Request, res: Response): Promise<void> {
     try {
       const { architectureData, projectName = 'infrastructure' }: {
-        architectureData: ArchitectureData | CleanArchitectureData,
+        architectureData: ArchitectureData,
         projectName?: string
       } = req.body;
 
@@ -454,10 +429,6 @@ export class TerraformController {
           return;
         }
         processedArchitectureData = transformationResult.transformed;
-      } else if (TerraformController.isCleanFormat(architectureData)) {
-        processedArchitectureData = ArchitectureConverterService.convertToLegacy(
-          architectureData as CleanArchitectureData
-        );
       } else {
         processedArchitectureData = architectureData as ArchitectureData;
       }
@@ -880,87 +851,9 @@ export class TerraformController {
     );
   }
 
-  /**
-   * Detect if the architecture data is in clean format or legacy format
-   */
-  private static isCleanFormat(data: any): boolean {
-    // Check for clean format structure
-    return !!(
-      data.metadata &&
-      data.infrastructure &&
-      data.deployment &&
-      data.infrastructure.network &&
-      data.infrastructure.compute &&
-      data.infrastructure.security
-    );
-  }
 
-  /**
-   * Convert clean format architecture data example
-   */
-  static async convertToCleanFormat(req: Request, res: Response): Promise<void> {
-    try {
-      const { architectureData }: { architectureData: ArchitectureData } = req.body;
 
-      if (!architectureData) {
-        const errorResponse = ResponseView.error('Architecture data is required');
-        res.status(400).json(errorResponse);
-        return;
-      }
 
-      console.log('🔄 Converting legacy format to clean format...');
-
-      const cleanData = ArchitectureConverterService.convertFromLegacy(architectureData);
-      const validation = ArchitectureConverterService.validateCleanArchitecture(cleanData);
-
-      const response = ResponseView.success({
-        cleanArchitectureData: cleanData,
-        validation,
-        conversionNotes: [
-          'Position information has been reset as it\'s not part of the clean format',
-          'Some configuration may have been normalized during conversion',
-          'Review the converted data before using in production'
-        ]
-      }, 'Architecture data converted to clean format successfully');
-
-      res.json(response);
-
-    } catch (error) {
-      console.error('❌ Error converting to clean format:', error);
-      const errorResponse = ResponseView.error(
-        'Failed to convert architecture data to clean format',
-        error instanceof Error ? error.message : 'Unknown error'
-      );
-      res.status(500).json(errorResponse);
-    }
-  }
-
-  /**
-   * Get example clean format architecture data
-   */
-  static async getCleanFormatExample(req: Request, res: Response): Promise<void> {
-    try {
-      console.log('📋 Generating clean format example...');
-
-      const exampleData = ArchitectureConverterService.generateExampleCleanData();
-
-      const response = ResponseView.success({
-        exampleCleanData: exampleData,
-        description: 'Example clean architecture data format',
-        usage: 'Use this structure as a template for your own architecture definitions'
-      }, 'Clean format example generated successfully');
-
-      res.json(response);
-
-    } catch (error) {
-      console.error('❌ Error generating clean format example:', error);
-      const errorResponse = ResponseView.error(
-        'Failed to generate clean format example',
-        error instanceof Error ? error.message : 'Unknown error'
-      );
-      res.status(500).json(errorResponse);
-    }
-  }
 
   /**
    * Get project workspace structure

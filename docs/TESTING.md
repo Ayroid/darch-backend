@@ -58,17 +58,7 @@ chmod +x test-modular.sh
 - Dependency validation
 - Error handling scenarios
 
-### 2. Clean Format Testing
-**File**: `test-clean-format.sh`
-
-Tests the Terraform clean formatting system:
-
-```bash
-chmod +x test-clean-format.sh
-./test-clean-format.sh
-```
-
-### 3. Terraform Syntax Validation
+### 2. Terraform Syntax Validation
 **File**: `test/validate-terraform-syntax.sh`
 
 Validates generated Terraform files:

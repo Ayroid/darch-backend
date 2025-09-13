@@ -1,18 +1,18 @@
 {
   "architectureData": {
     "metadata": {
-      "name": "Simple VPC with EC2",
-      "description": "Basic infrastructure with VPC, subnets, security group, and EC2 instances",
+      "name": "Test Infrastructure",
+      "description": "Basic test infrastructure with VPC, subnets, security group, and EC2 instances",
       "version": "1.0.0",
       "provider": "aws",
       "region": "ap-south-1",
       "environment": "development",
-      "project": "simple-infrastructure",
-      "createdAt": "2025-09-08T17:00:00.000Z",
-      "lastModified": "2025-09-08T17:56:00.000Z",
+      "project": "test-infrastructure",
+      "createdAt": "2025-09-13T12:00:00.000Z",
+      "lastModified": "2025-09-13T12:00:00.000Z",
       "tags": {
         "Environment": "development",
-        "Project": "simple-infrastructure"
+        "Project": "test-infrastructure"
       }
     },
     "nodes": [
@@ -222,5 +222,5 @@
       }
     ]
   },
-  "projectName": "simple-infrastructure"
+  "projectName": "test-infrastructure"
 }

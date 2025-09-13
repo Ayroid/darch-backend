@@ -4,8 +4,8 @@
 
 The Darch backend accepts architecture data in JSON format for converting to Terraform files. The system supports two formats:
 
-1. **Legacy Format** - Original node-based format (documented below)
-2. **Clean Format** - New structured format for cleaner architecture definitions
+1. **Frontend Format** - Node-based format with UI positioning data from the frontend
+2. **Legacy Format** - Backend internal format for processing
 
 ## JSON Structure Rules
 

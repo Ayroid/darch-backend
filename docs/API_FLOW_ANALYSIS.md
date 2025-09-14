@@ -10,17 +10,18 @@ This document provides a comprehensive analysis of the exact function call flow 
 
 ## API Endpoints Overview
 
-| Endpoint | Purpose | File Generation | Terraform Execution | Performance |
-|----------|---------|-----------------|-------------------|-------------|
-| `POST /api/terraform/generate` | Full terraform file generation | ✅ Creates actual .tf files | ❌ No terraform commands | Slower (file I/O) |
-| `POST /api/terraform/plan` | Quick plan preview | ❌ No files created | ❌ No terraform commands | Faster (in-memory only) |
-| `POST /api/terraform/plan-execute` | Async terraform execution | ✅ Creates files + runs terraform | ✅ Actual terraform init/plan | Async job-based |
+| Endpoint                       | Purpose                        | File Generation                   | Terraform Execution           | Performance             |
+| ------------------------------ | ------------------------------ | --------------------------------- | ----------------------------- | ----------------------- |
+| `POST /api/terraform/generate` | Full terraform file generation | ✅ Creates actual .tf files       | ❌ No terraform commands      | Slower (file I/O)       |
+| `POST /api/terraform/plan`     | Quick plan preview             | ❌ No files created               | ❌ No terraform commands      | Faster (in-memory only) |
+| `POST /api/terraform/plan`     | Async terraform execution      | ✅ Creates files + runs terraform | ✅ Actual terraform init/plan | Async job-based         |
 
 ## Detailed Flow Analysis
 
 ### POST `/terraform/generate` API Flow
 
 #### 1. Request Entry Point
+
 ```typescript
 Route: /api/terraform/generate
 ├── ValidationMiddleware.validateArchitectureData()
@@ -31,6 +32,7 @@ Route: /api/terraform/generate
 #### 2. Architecture Data Processing
 
 **Format Detection & Transformation:**
+
 ```typescript
 TerraformController.generateModularTerraform()
 ├── TerraformController.isFrontendFormat() - Detects frontend format
@@ -39,6 +41,7 @@ TerraformController.generateModularTerraform()
 ```
 
 **Frontend Format Flow:**
+
 ```typescript
 FrontendArchitectureTransformerService.validateFrontendData()
 └── FrontendArchitectureTransformerService.transformToBackendFormat()
@@ -50,6 +53,7 @@ FrontendArchitectureTransformerService.validateFrontendData()
 #### 3. Architecture Parsing & Validation
 
 **Main Parsing Flow:**
+
 ```typescript
 ArchitectureParserService.parseArchitecture(processedArchitectureData)
 ├── parseNodes(architectureData.nodes)
@@ -80,6 +84,7 @@ ArchitectureParserService.parseArchitecture(processedArchitectureData)
 #### 4. Module Mapping
 
 **Core Mapping Process:**
+
 ```typescript
 ModuleMapperService.mapArchitectureToModules(parsedArchitecture)
 ├── topologicalSort(parsedArchitecture.nodes) - Orders nodes by dependencies
@@ -107,6 +112,7 @@ ModuleMapperService.mapArchitectureToModules(parsedArchitecture)
 #### 5. Terraform Configuration Generation
 
 **File Generation Process:**
+
 ```typescript
 ModularTerraformGeneratorService.generateTerraformConfiguration(mappingResult, metadata, projectName)
 ├── generateMainTf(modules, dependencies, metadata)
@@ -133,6 +139,7 @@ ModularTerraformGeneratorService.generateTerraformConfiguration(mappingResult, m
 ```
 
 **File Structure Generated:**
+
 - `main.tf` - Module definitions with dependencies
 - `variables.tf` - Input variable declarations
 - `outputs.tf` - Output value definitions
@@ -142,6 +149,7 @@ ModularTerraformGeneratorService.generateTerraformConfiguration(mappingResult, m
 #### 6. File Management & Persistence
 
 **Saving Process:**
+
 ```typescript
 FileService.saveGeneratedTerraformFiles(terraformResult, projectName)
 ├── ensureInitialized() - Initializes LocalFileManager
@@ -154,6 +162,7 @@ FileService.saveGeneratedTerraformFiles(terraformResult, projectName)
 ```
 
 **File Structure Created:**
+
 ```
 /src/output/users/sudo/{project-name-timestamp}/
 ├── generated/
@@ -168,6 +177,7 @@ FileService.saveGeneratedTerraformFiles(terraformResult, projectName)
 #### 7. Validation & Response
 
 **Final Validation:**
+
 ```typescript
 ModularTerraformGeneratorService.validateTerraformSyntax(terraformResult.mainTf)
 ├── validateBraces() - Checks brace matching
@@ -177,16 +187,17 @@ ModularTerraformGeneratorService.validateTerraformSyntax(terraformResult.mainTf)
 ```
 
 **Response Formation:**
+
 ```typescript
 ResponseView.success({
-  project: { name, path, generatedAt },
-  files: { generated: count, list: filenames },
-  validation: { syntaxValid, errors },
-  architectureValidation: { valid, errorCount, warningCount },
-  moduleMapping: { modulesGenerated, dependencies, warnings },
-  formatUsed: 'frontend'|'clean'|'legacy',
-  status: 'success'
-})
+	project: { name, path, generatedAt },
+	files: { generated: count, list: filenames },
+	validation: { syntaxValid, errors },
+	architectureValidation: { valid, errorCount, warningCount },
+	moduleMapping: { modulesGenerated, dependencies, warnings },
+	formatUsed: "frontend" | "clean" | "legacy",
+	status: "success",
+});
 ```
 
 ---
@@ -194,6 +205,7 @@ ResponseView.success({
 ### POST `/terraform/plan` API Flow
 
 #### 1. Request Entry Point
+
 ```typescript
 Route: /api/terraform/plan
 ├── ValidationMiddleware.validateArchitectureData()
@@ -201,6 +213,7 @@ Route: /api/terraform/plan
 ```
 
 #### 2. Lightweight Processing
+
 **Same parsing and mapping as `/terraform/generate` but without file generation:**
 
 ```typescript
@@ -221,6 +234,7 @@ TerraformController.generateTerraformPlan()
 ```
 
 #### 3. Response Structure
+
 ```typescript
 {
   resourceSummary: {
@@ -242,17 +256,19 @@ TerraformController.generateTerraformPlan()
 
 ---
 
-### POST `/terraform/plan-execute` API Flow (Async Terraform Execution)
+### POST `/terraform/plan` API Flow (Async Terraform Execution)
 
 #### 1. Request Processing
+
 ```typescript
-TerraformController.startTerraformPlanExecution()
+TerraformController.generateTerraformPlan()
 ├── [Same generation flow as /terraform/generate]
 ├── Saves terraform files to disk
 └── TerraformExecutionService.startTerraformPlan(projectPath, architectureData, projectName)
 ```
 
 #### 2. Async Job Management
+
 ```typescript
 TerraformExecutionService.startTerraformPlan()
 ├── Generates unique jobId: plan_{timestamp}_{random}
@@ -274,6 +290,7 @@ TerraformExecutionService.startTerraformPlan()
 ```
 
 #### 3. Job Status Polling
+
 ```typescript
 GET /api/terraform/plan-status/{jobId}
 └── TerraformController.getTerraformPlanStatus()
@@ -286,6 +303,7 @@ GET /api/terraform/plan-status/{jobId}
 ## Service Dependencies
 
 ### Core Service Hierarchy
+
 ```
 TerraformController
 ├── ValidationMiddleware
@@ -303,6 +321,7 @@ TerraformController
 ```
 
 ### Key Data Models
+
 ```typescript
 // Input Models
 ArchitectureData | CleanArchitectureData | FrontendArchitectureData
@@ -326,14 +345,14 @@ JobStatus { id, status, progress, message, result, error, logs, rawOutput }
 
 ## Key Differences Summary
 
-| Feature | `/terraform/generate` | `/terraform/plan` | `/terraform/plan-execute` |
-|---------|---------------------|-------------------|---------------------------|
-| **File Creation** | ✅ Full terraform files | ❌ No files | ✅ Full terraform files |
-| **Terraform Commands** | ❌ None | ❌ None | ✅ init + plan |
-| **Response Type** | Synchronous | Synchronous | Async (job-based) |
-| **Output** | Project structure + validation | Resource summary + cost estimate | Streaming logs + plan output |
-| **Use Case** | Generate downloadable terraform | Quick preview/validation | Full terraform analysis |
-| **Performance** | Medium (file I/O) | Fast (memory only) | Slow (terraform execution) |
+| Feature                | `/terraform/generate`           | `/terraform/plan` (removed)      | `/terraform/plan`            |
+| ---------------------- | ------------------------------- | -------------------------------- | ---------------------------- |
+| **File Creation**      | ✅ Full terraform files         | ❌ No files                      | ✅ Full terraform files      |
+| **Terraform Commands** | ❌ None                         | ❌ None                          | ✅ init + plan               |
+| **Response Type**      | Synchronous                     | Synchronous                      | Async (job-based)            |
+| **Output**             | Project structure + validation  | Resource summary + cost estimate | Streaming logs + plan output |
+| **Use Case**           | Generate downloadable terraform | Quick preview/validation         | Full terraform analysis      |
+| **Performance**        | Medium (file I/O)               | Fast (memory only)               | Slow (terraform execution)   |
 
 ---
 
@@ -358,4 +377,4 @@ Each module contains standard Terraform module files (`main.tf`, `variables.tf`,
 
 ---
 
-*This document provides a comprehensive technical reference for understanding the complete flow of terraform generation and planning APIs in the Darch system.*
+_This document provides a comprehensive technical reference for understanding the complete flow of terraform generation and planning APIs in the Darch system._

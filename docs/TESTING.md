@@ -15,16 +15,19 @@ The Darch Backend includes comprehensive testing capabilities:
 ## 🚀 Quick Testing
 
 ### Health Check
+
 ```bash
 curl http://localhost:5000/health
 ```
 
 ### Module Discovery
+
 ```bash
 curl http://localhost:5000/api/modules
 ```
 
 ### Architecture Validation
+
 ```bash
 curl -X POST http://localhost:5000/api/validate-architecture \
   -H "Content-Type: application/json" \
@@ -32,6 +35,7 @@ curl -X POST http://localhost:5000/api/validate-architecture \
 ```
 
 ### Terraform Generation
+
 ```bash
 curl -X POST http://localhost:5000/api/generate-terraform \
   -H "Content-Type: application/json" \
@@ -41,6 +45,7 @@ curl -X POST http://localhost:5000/api/generate-terraform \
 ## 📋 Available Test Scripts
 
 ### 1. Modular Testing Script
+
 **File**: `test-modular.sh`
 
 Comprehensive test suite covering all API endpoints:
@@ -51,6 +56,7 @@ chmod +x test-modular.sh
 ```
 
 **Tests Include:**
+
 - Server health check
 - Module registry discovery
 - Architecture validation
@@ -59,6 +65,7 @@ chmod +x test-modular.sh
 - Error handling scenarios
 
 ### 2. Terraform Syntax Validation
+
 **File**: `test/validate-terraform-syntax.sh`
 
 Validates generated Terraform files:
@@ -69,6 +76,7 @@ chmod +x test/validate-terraform-syntax.sh
 ```
 
 **Validation Checks:**
+
 - Syntax correctness
 - Balanced braces and brackets
 - Modern Terraform syntax (0.12+)
@@ -78,12 +86,14 @@ chmod +x test/validate-terraform-syntax.sh
 ## 🐳 Docker Testing
 
 ### Build and Test Container
+
 ```bash
 npm run docker:build
 npm run docker:test
 ```
 
 ### Manual Docker Testing
+
 ```bash
 # Build image
 docker build -t darch-backend-test .
@@ -98,9 +108,11 @@ docker run -it --rm -p 5000:5000 darch-backend-test bash
 ## 📊 Test Data
 
 ### Sample Architecture JSON
+
 **File**: `test-terraform-request.json`
 
 Contains a complete sample architecture with:
+
 - VPC configuration
 - Public and private subnets
 - Security groups
@@ -108,6 +120,7 @@ Contains a complete sample architecture with:
 - Proper dependency relationships
 
 ### Test Output Directory
+
 **Directory**: `test-output/`
 
 Generated Terraform files are saved here during testing.
@@ -115,6 +128,7 @@ Generated Terraform files are saved here during testing.
 ## 🔍 Manual Testing Scenarios
 
 ### 1. Basic Workflow Test
+
 ```bash
 # 1. Start server
 npm start
@@ -137,6 +151,7 @@ curl -X POST http://localhost:5000/api/generate-terraform \
 ```
 
 ### 2. Error Handling Tests
+
 ```bash
 # Invalid JSON
 curl -X POST http://localhost:5000/api/generate-terraform \
@@ -159,6 +174,7 @@ curl -X POST http://localhost:5000/api/generate-terraform \
 ```
 
 ### 3. Module Validation Tests
+
 ```bash
 # Valid module configuration
 curl -X POST http://localhost:5000/api/modules/validate \
@@ -186,6 +202,7 @@ curl -X POST http://localhost:5000/api/modules/validate \
 ## 📈 Performance Testing
 
 ### Load Testing with curl
+
 ```bash
 # Multiple concurrent requests
 for i in {1..10}; do
@@ -197,6 +214,7 @@ wait
 ```
 
 ### Memory Usage Monitoring
+
 ```bash
 # Monitor memory usage during testing
 while true; do
@@ -208,16 +226,19 @@ done
 ## 🐛 Debugging Tests
 
 ### Enable Debug Logging
+
 ```bash
 NODE_ENV=development npm start
 ```
 
 ### Test with Verbose Output
+
 ```bash
 curl -v http://localhost:5000/health
 ```
 
 ### Check Generated Files
+
 ```bash
 # List generated files
 ls -la src/output/
@@ -245,12 +266,14 @@ Before releasing, ensure all tests pass:
 ### Common Issues
 
 **Port Already in Use**
+
 ```bash
 # Kill process on port 5000
 lsof -ti:5000 | xargs kill -9
 ```
 
 **Permission Denied on Scripts**
+
 ```bash
 # Make scripts executable
 chmod +x test-modular.sh
@@ -259,12 +282,14 @@ chmod +x test/validate-terraform-syntax.sh
 ```
 
 **Module Files Not Found**
+
 ```bash
 # Check module directory structure
 ls -la terraform-modules/
 ```
 
 **Generated Files Not Created**
+
 ```bash
 # Check output directory permissions
 ls -la src/output/
@@ -274,18 +299,21 @@ mkdir -p src/output/
 ## 📝 Adding New Tests
 
 ### Adding API Endpoint Tests
+
 1. Add test case to `test-modular.sh`
 2. Include positive and negative test scenarios
 3. Validate response format and status codes
 4. Test error handling
 
 ### Adding Module Tests
+
 1. Create sample module configuration
 2. Test validation logic
 3. Test Terraform generation
 4. Verify output quality
 
 ### Adding Integration Tests
+
 1. Create end-to-end scenarios
 2. Test multiple API calls in sequence
 3. Validate data flow between endpoints
@@ -293,4 +321,4 @@ mkdir -p src/output/
 
 ---
 
-*For more detailed testing information, see the individual test script files and their inline documentation.*
+_For more detailed testing information, see the individual test script files and their inline documentation._

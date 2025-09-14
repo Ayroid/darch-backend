@@ -62,21 +62,18 @@ export class LocalFileManager {
     userId: string = this.ROOT_USER_ID
   ): Promise<UserProjectInfo> {
     const projectPath = this.getUserProjectPath(userId, projectId);
-    const generatedPath = this.getGeneratedPath(userId, projectId);
+    const generatedPath = projectPath; // Files go directly in project root
     const statePath = this.getStatePath(userId, projectId);
     const terraformPath = this.getTerraformPath(userId, projectId);
 
-    // Create project directory structure
+    // Create only the project directory - state and .terraform created by terraform commands
     await fs.promises.mkdir(projectPath, { recursive: true });
-    await fs.promises.mkdir(generatedPath, { recursive: true });
-    await fs.promises.mkdir(statePath, { recursive: true });
-    await fs.promises.mkdir(terraformPath, { recursive: true });
 
     console.log(`📁 Created project structure: ${projectPath}`);
 
-    // Write terraform files to the generated directory
+    // Write terraform files directly to the project directory
     for (const [filename, content] of Object.entries(terraformFiles)) {
-      const filePath = path.join(generatedPath, filename);
+      const filePath = path.join(projectPath, filename);
       await fs.promises.writeFile(filePath, content);
       console.log(`💾 Saved: ${filename}`);
     }
@@ -122,26 +119,23 @@ export class LocalFileManager {
       .filter(dirent => dirent.isDirectory())
       .map(dirent => {
         const projectPath = path.join(userPath, dirent.name);
-        const generatedPath = path.join(projectPath, 'generated');
         const statePath = path.join(projectPath, 'state');
         const terraformPath = path.join(projectPath, '.terraform');
 
         const stats = fs.statSync(projectPath);
 
-        // Count terraform files in generated directory
+        // Count terraform files in project root directory
         let fileCount = 0;
         let totalSize = 0;
 
-        if (fs.existsSync(generatedPath)) {
-          const files = fs.readdirSync(generatedPath).filter(file => file.endsWith('.tf'));
-          fileCount = files.length;
+        const files = fs.readdirSync(projectPath).filter(file => file.endsWith('.tf'));
+        fileCount = files.length;
 
-          // Calculate total size of generated files
-          totalSize = files.reduce((size, file) => {
-            const filePath = path.join(generatedPath, file);
-            return size + fs.statSync(filePath).size;
-          }, 0);
-        }
+        // Calculate total size of terraform files
+        totalSize = files.reduce((size, file) => {
+          const filePath = path.join(projectPath, file);
+          return size + fs.statSync(filePath).size;
+        }, 0);
 
         return {
           projectId: dirent.name,
@@ -174,7 +168,7 @@ export class LocalFileManager {
   }
 
   /**
-   * Get project files from the generated directory
+   * Get project files from the project root directory
    */
   getProjectFiles(projectId: string, userId: string = this.ROOT_USER_ID): Array<{
     name: string;
@@ -183,16 +177,16 @@ export class LocalFileManager {
     createdAt: string;
     modifiedAt: string;
   }> {
-    const generatedPath = this.getGeneratedPath(userId, projectId);
+    const projectPath = this.getUserProjectPath(userId, projectId);
 
-    if (!fs.existsSync(generatedPath)) {
+    if (!fs.existsSync(projectPath)) {
       return [];
     }
 
-    return fs.readdirSync(generatedPath)
+    return fs.readdirSync(projectPath)
       .filter(file => file.endsWith('.tf'))
       .map(file => {
-        const filePath = path.join(generatedPath, file);
+        const filePath = path.join(projectPath, file);
         const stats = fs.statSync(filePath);
         return {
           name: file,
@@ -206,11 +200,11 @@ export class LocalFileManager {
   }
 
   /**
-   * Get file content from generated directory
+   * Get file content from project root directory
    */
   getFileContent(projectId: string, filename: string, userId: string = this.ROOT_USER_ID): string | null {
-    const generatedPath = this.getGeneratedPath(userId, projectId);
-    const filePath = path.join(generatedPath, filename);
+    const projectPath = this.getUserProjectPath(userId, projectId);
+    const filePath = path.join(projectPath, filename);
 
     if (!fs.existsSync(filePath) || !filename.endsWith('.tf')) {
       return null;
@@ -223,8 +217,8 @@ export class LocalFileManager {
    * Get file path for download
    */
   getFilePath(projectId: string, filename: string, userId: string = this.ROOT_USER_ID): string | null {
-    const generatedPath = this.getGeneratedPath(userId, projectId);
-    const filePath = path.join(generatedPath, filename);
+    const projectPath = this.getUserProjectPath(userId, projectId);
+    const filePath = path.join(projectPath, filename);
 
     if (!fs.existsSync(filePath) || !filename.endsWith('.tf')) {
       return null;
@@ -266,8 +260,8 @@ export class LocalFileManager {
       return null;
     }
 
-    const generatedFiles = fs.existsSync(generatedPath)
-      ? fs.readdirSync(generatedPath).filter(file => file.endsWith('.tf'))
+    const generatedFiles = fs.existsSync(projectPath)
+      ? fs.readdirSync(projectPath).filter(file => file.endsWith('.tf'))
       : [];
 
     return {

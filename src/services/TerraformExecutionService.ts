@@ -134,29 +134,38 @@ export class TerraformExecutionService {
       updateJob({ progress: 20, message: 'Preparing project files...' });
       addLog('📁 Preparing project files...');
 
-      // Step 2: Ensure project directory exists and has terraform files
-      const generatedPath = path.join(projectPath, 'generated');
-      await this.ensureDirectoryExists(generatedPath);
-      addLog(`📁 Project directory prepared: ${generatedPath}`);
+      // Step 2: Verify project directory exists and has terraform files
+      addLog(`📁 Using project directory: ${projectPath}`);
 
       updateJob({ progress: 30, message: 'Checking terraform initialization...' });
       addLog('🔍 Checking terraform initialization...');
 
       // Step 3: Check if terraform is initialized, if not - initialize
-      const isInitialized = await this.checkTerraformInit(generatedPath);
+      const isInitialized = await this.checkTerraformInit(projectPath);
       if (!isInitialized) {
         updateJob({ progress: 40, message: 'Initializing terraform...' });
-        addLog('🔧 Terraform not initialized, running terraform init...');
-        await this.runTerraformInit(generatedPath, addLog);
+        addLog('🔧 Terraform not properly initialized, running terraform init...');
+        await this.runTerraformInit(projectPath, addLog);
       } else {
-        addLog('✅ Terraform already initialized');
+        // Even if initialized, verify modules are properly installed
+        updateJob({ progress: 35, message: 'Verifying module installation...' });
+        addLog('🔍 Verifying terraform modules are installed...');
+        
+        const modulesInstalled = await this.checkModulesInstalled(projectPath);
+        if (!modulesInstalled) {
+          updateJob({ progress: 40, message: 'Reinstalling terraform modules...' });
+          addLog('🔧 Modules not properly installed, running terraform init...');
+          await this.runTerraformInit(projectPath, addLog);
+        } else {
+          addLog('✅ Terraform and modules properly initialized');
+        }
       }
 
       updateJob({ progress: 60, message: 'Generating terraform plan...' });
       addLog('📊 Starting terraform plan generation...');
 
       // Step 4: Run terraform plan
-      const planResult = await this.runTerraformPlan(generatedPath, jobId, addLog);
+      const planResult = await this.runTerraformPlan(projectPath, jobId, addLog);
 
       updateJob({ progress: 80, message: 'Processing plan output...' });
 
@@ -231,14 +240,43 @@ export class TerraformExecutionService {
   }
 
   /**
-   * Check if terraform is initialized in the directory
+   * Check if terraform is properly initialized in the directory
    */
   private static async checkTerraformInit(projectPath: string): Promise<boolean> {
     try {
       const terraformDir = path.join(projectPath, '.terraform');
+      const terraformState = path.join(terraformDir, 'terraform.tfstate');
+      
+      // Check if .terraform directory exists
       await fs.access(terraformDir);
+      
+      // Check if terraform.tfstate exists (indicates successful init)
+      await fs.access(terraformState);
+      
       return true;
     } catch {
+      // Any of the checks failed, need to run init
+      return false;
+    }
+  }
+
+  /**
+   * Check if terraform modules are properly installed
+   */
+  private static async checkModulesInstalled(projectPath: string): Promise<boolean> {
+    try {
+      const terraformModulesDir = path.join(projectPath, '.terraform', 'modules');
+      const moduleJsonFile = path.join(terraformModulesDir, 'modules.json');
+      
+      // Check if modules directory exists
+      await fs.access(terraformModulesDir);
+      
+      // Check if modules.json exists (indicates modules were downloaded)
+      await fs.access(moduleJsonFile);
+      
+      return true;
+    } catch {
+      // Modules not properly installed
       return false;
     }
   }
@@ -251,9 +289,9 @@ export class TerraformExecutionService {
     addLog: (log: string) => void
   ): Promise<void> {
     return new Promise((resolve, reject) => {
-      addLog('🔄 Starting terraform init...');
+      addLog('🔄 Starting terraform init with module upgrade...');
 
-      const terraform = spawn('terraform', ['init'], {
+      const terraform = spawn('terraform', ['init', '-upgrade'], {
         cwd: projectPath,
         stdio: 'pipe'
       });

@@ -245,7 +245,7 @@ export class ModuleRegistryService {
       description: module.description,
       version: module.version,
       author: 'Darch Team',
-      source: `./src/data/terraform-modules/${category}/${name}`,
+      source: path.resolve(process.cwd(), `src/data/terraform-modules/${category}/${name}`),
       documentation: `Documentation for ${category}/${name} module`,
       examples: [],
       dependencies: module.dependencies,

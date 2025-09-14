@@ -1,226 +1,226 @@
 {
-  "architectureData": {
-    "metadata": {
-      "name": "Test Infrastructure",
-      "description": "Basic test infrastructure with VPC, subnets, security group, and EC2 instances",
-      "version": "1.0.0",
-      "provider": "aws",
-      "region": "ap-south-1",
-      "environment": "development",
-      "project": "test-infrastructure",
-      "createdAt": "2025-09-13T12:00:00.000Z",
-      "lastModified": "2025-09-13T12:00:00.000Z",
-      "tags": {
-        "Environment": "development",
-        "Project": "test-infrastructure"
-      }
-    },
-    "nodes": [
-      {
-        "id": "main-vpc",
-        "resourceType": "vpc",
-        "name": "main-vpc",
-        "nodeType": "awsService",
-        "position": {
-          "x": 100,
-          "y": 100
-        },
-        "configuration": {
-          "cidr_block": "10.0.0.0/16",
-          "enable_dns_hostnames": true,
-          "enable_dns_support": true,
-          "tags": {
-            "Name": "main-vpc",
-            "Environment": "development"
-          }
-        }
-      },
-      {
-        "id": "private-subnet",
-        "resourceType": "subnet",
-        "name": "private-subnet",
-        "nodeType": "awsService",
-        "position": {
-          "x": 200,
-          "y": 200
-        },
-        "configuration": {
-          "vpc_id": "main-vpc",
-          "cidr_block": "10.0.1.0/24",
-          "availability_zone": "ap-south-1a",
-          "subnet_type": "private",
-          "map_public_ip_on_launch": false,
-          "tags": {
-            "Name": "private-subnet",
-            "Type": "Private"
-          }
-        }
-      },
-      {
-        "id": "public-subnet",
-        "resourceType": "subnet",
-        "name": "public-subnet",
-        "nodeType": "awsService",
-        "position": {
-          "x": 300,
-          "y": 200
-        },
-        "configuration": {
-          "vpc_id": "main-vpc",
-          "cidr_block": "10.0.2.0/24",
-          "availability_zone": "ap-south-1a",
-          "subnet_type": "public",
-          "map_public_ip_on_launch": true,
-          "tags": {
-            "Name": "public-subnet",
-            "Type": "Public"
-          }
-        }
-      },
-      {
-        "id": "web-security-group",
-        "resourceType": "security-group",
-        "name": "web-sg",
-        "nodeType": "awsService",
-        "position": {
-          "x": 150,
-          "y": 300
-        },
-        "configuration": {
-          "name": "web-sg",
-          "description": "Security group for web servers",
-          "vpc_id": "main-vpc",
-          "ingress_rules": [
-            {
-              "from_port": 80,
-              "to_port": 80,
-              "protocol": "tcp",
-              "cidr_blocks": ["0.0.0.0/0"],
-              "description": "HTTP access"
-            },
-            {
-              "from_port": 443,
-              "to_port": 443,
-              "protocol": "tcp",
-              "cidr_blocks": ["0.0.0.0/0"],
-              "description": "HTTPS access"
-            },
-            {
-              "from_port": 22,
-              "to_port": 22,
-              "protocol": "tcp",
-              "cidr_blocks": ["10.0.0.0/16"],
-              "description": "SSH access from VPC"
-            }
-          ],
-          "egress_rules": [
-            {
-              "from_port": 0,
-              "to_port": 0,
-              "protocol": "-1",
-              "cidr_blocks": ["0.0.0.0/0"],
-              "description": "All outbound traffic"
-            }
-          ],
-          "tags": {
-            "Name": "web-security-group"
-          }
-        }
-      },
-      {
-        "id": "private-ec2",
-        "resourceType": "ec2",
-        "name": "private-instance",
-        "nodeType": "awsService",
-        "position": {
-          "x": 200,
-          "y": 400
-        },
-        "configuration": {
-          "instance_type": "t3.micro",
-          "ami_id": "ami-0c55b159cbfafe1d0",
-          "subnet_id": "private-subnet",
-          "security_group_ids": ["web-security-group"],
-          "associate_public_ip_address": false,
-          "root_block_device": {
-            "volume_type": "gp3",
-            "volume_size": 8,
-            "delete_on_termination": true,
-            "encrypted": false
-          },
-          "ebs_block_device": [],
-          "tags": {
-            "Name": "private-instance",
-            "Environment": "development"
-          }
-        }
-      },
-      {
-        "id": "public-ec2",
-        "resourceType": "ec2",
-        "name": "public-instance",
-        "nodeType": "awsService",
-        "position": {
-          "x": 300,
-          "y": 400
-        },
-        "configuration": {
-          "instance_type": "t3.micro",
-          "ami_id": "ami-0c55b159cbfafe1d0",
-          "subnet_id": "public-subnet",
-          "security_group_ids": ["web-security-group"],
-          "associate_public_ip_address": true,
-          "root_block_device": {
-            "volume_type": "gp3",
-            "volume_size": 8,
-            "delete_on_termination": true,
-            "encrypted": false
-          },
-          "ebs_block_device": [],
-          "tags": {
-            "Name": "public-instance",
-            "Environment": "development"
-          }
-        }
-      }
-    ],
-    "connections": [
-      {
-        "source": "main-vpc",
-        "target": "private-subnet",
-        "type": "contains"
-      },
-      {
-        "source": "main-vpc",
-        "target": "public-subnet",
-        "type": "contains"
-      },
-      {
-        "source": "main-vpc",
-        "target": "web-security-group",
-        "type": "contains"
-      },
-      {
-        "source": "private-subnet",
-        "target": "private-ec2",
-        "type": "contains"
-      },
-      {
-        "source": "public-subnet",
-        "target": "public-ec2",
-        "type": "contains"
-      },
-      {
-        "source": "web-security-group",
-        "target": "private-ec2",
-        "type": "secures"
-      },
-      {
-        "source": "web-security-group",
-        "target": "public-ec2",
-        "type": "secures"
-      }
-    ]
-  },
-  "projectName": "test-infrastructure"
+	"architectureData": {
+		"metadata": {
+			"name": "Test Infrastructure",
+			"description": "Basic test infrastructure with VPC, subnets, security group, and EC2 instances",
+			"version": "1.0.0",
+			"provider": "aws",
+			"region": "ap-south-1",
+			"environment": "development",
+			"project": "test-infrastructure",
+			"createdAt": "2025-09-13T12:00:00.000Z",
+			"lastModified": "2025-09-13T12:00:00.000Z",
+			"tags": {
+				"Environment": "development",
+				"Project": "test-infrastructure"
+			}
+		},
+		"nodes": [
+			{
+				"id": "main-vpc",
+				"resourceType": "vpc",
+				"name": "main-vpc",
+				"nodeType": "awsService",
+				"position": {
+					"x": 100,
+					"y": 100
+				},
+				"configuration": {
+					"cidr_block": "10.0.0.0/16",
+					"enable_dns_hostnames": true,
+					"enable_dns_support": true,
+					"tags": {
+						"Name": "main-vpc",
+						"Environment": "development"
+					}
+				}
+			},
+			{
+				"id": "private-subnet",
+				"resourceType": "subnet",
+				"name": "private-subnet",
+				"nodeType": "awsService",
+				"position": {
+					"x": 200,
+					"y": 200
+				},
+				"configuration": {
+					"vpc_id": "main-vpc",
+					"cidr_block": "10.0.1.0/24",
+					"availability_zone": "ap-south-1a",
+					"subnet_type": "private",
+					"map_public_ip_on_launch": false,
+					"tags": {
+						"Name": "private-subnet",
+						"Type": "Private"
+					}
+				}
+			},
+			{
+				"id": "public-subnet",
+				"resourceType": "subnet",
+				"name": "public-subnet",
+				"nodeType": "awsService",
+				"position": {
+					"x": 300,
+					"y": 200
+				},
+				"configuration": {
+					"vpc_id": "main-vpc",
+					"cidr_block": "10.0.2.0/24",
+					"availability_zone": "ap-south-1a",
+					"subnet_type": "public",
+					"map_public_ip_on_launch": true,
+					"tags": {
+						"Name": "public-subnet",
+						"Type": "Public"
+					}
+				}
+			},
+			{
+				"id": "web-security-group",
+				"resourceType": "security-group",
+				"name": "web-sg",
+				"nodeType": "awsService",
+				"position": {
+					"x": 150,
+					"y": 300
+				},
+				"configuration": {
+					"name": "web-sg",
+					"description": "Security group for web servers",
+					"vpc_id": "main-vpc",
+					"ingress_rules": [
+						{
+							"from_port": 80,
+							"to_port": 80,
+							"protocol": "tcp",
+							"cidr_blocks": ["0.0.0.0/0"],
+							"description": "HTTP access"
+						},
+						{
+							"from_port": 443,
+							"to_port": 443,
+							"protocol": "tcp",
+							"cidr_blocks": ["0.0.0.0/0"],
+							"description": "HTTPS access"
+						},
+						{
+							"from_port": 22,
+							"to_port": 22,
+							"protocol": "tcp",
+							"cidr_blocks": ["10.0.0.0/16"],
+							"description": "SSH access from VPC"
+						}
+					],
+					"egress_rules": [
+						{
+							"from_port": 0,
+							"to_port": 0,
+							"protocol": "-1",
+							"cidr_blocks": ["0.0.0.0/0"],
+							"description": "All outbound traffic"
+						}
+					],
+					"tags": {
+						"Name": "web-security-group"
+					}
+				}
+			},
+			{
+				"id": "private-ec2",
+				"resourceType": "ec2",
+				"name": "private-instance",
+				"nodeType": "awsService",
+				"position": {
+					"x": 200,
+					"y": 400
+				},
+				"configuration": {
+					"instance_type": "t3.micro",
+					"ami_id": "ami-0c55b159cbfafe1d0",
+					"subnet_id": "private-subnet",
+					"security_group_ids": ["web-security-group"],
+					"associate_public_ip_address": false,
+					"root_block_device": {
+						"volume_type": "gp3",
+						"volume_size": 8,
+						"delete_on_termination": true,
+						"encrypted": false
+					},
+					"ebs_block_device": [],
+					"tags": {
+						"Name": "private-instance",
+						"Environment": "development"
+					}
+				}
+			},
+			{
+				"id": "public-ec2",
+				"resourceType": "ec2",
+				"name": "public-instance",
+				"nodeType": "awsService",
+				"position": {
+					"x": 300,
+					"y": 400
+				},
+				"configuration": {
+					"instance_type": "t3.micro",
+					"ami_id": "ami-0c55b159cbfafe1d0",
+					"subnet_id": "public-subnet",
+					"security_group_ids": ["web-security-group"],
+					"associate_public_ip_address": true,
+					"root_block_device": {
+						"volume_type": "gp3",
+						"volume_size": 8,
+						"delete_on_termination": true,
+						"encrypted": false
+					},
+					"ebs_block_device": [],
+					"tags": {
+						"Name": "public-instance",
+						"Environment": "development"
+					}
+				}
+			}
+		],
+		"connections": [
+			{
+				"source": "main-vpc",
+				"target": "private-subnet",
+				"type": "contains"
+			},
+			{
+				"source": "main-vpc",
+				"target": "public-subnet",
+				"type": "contains"
+			},
+			{
+				"source": "main-vpc",
+				"target": "web-security-group",
+				"type": "contains"
+			},
+			{
+				"source": "private-subnet",
+				"target": "private-ec2",
+				"type": "contains"
+			},
+			{
+				"source": "public-subnet",
+				"target": "public-ec2",
+				"type": "contains"
+			},
+			{
+				"source": "web-security-group",
+				"target": "private-ec2",
+				"type": "secures"
+			},
+			{
+				"source": "web-security-group",
+				"target": "public-ec2",
+				"type": "secures"
+			}
+		]
+	},
+	"projectName": "test-infrastructure"
 }

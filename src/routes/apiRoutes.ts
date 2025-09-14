@@ -28,6 +28,31 @@ router.get(
 	TerraformController.getTerraformPlanStatus
 );
 
+// Apply Terraform infrastructure
+router.post(
+	"/terraform/apply",
+	ValidationMiddleware.validateArchitectureData,
+	TerraformController.generateTerraformApply
+);
+
+// Get terraform apply job status (polling)
+router.get(
+	"/terraform/apply-status/:jobId",
+	TerraformController.getTerraformApplyStatus
+);
+
+// Destroy Terraform infrastructure
+router.post(
+	"/terraform/destroy",
+	TerraformController.generateTerraformDestroy
+);
+
+// Get terraform destroy job status (polling)
+router.get(
+	"/terraform/destroy-status/:jobId",
+	TerraformController.getTerraformDestroyStatus
+);
+
 // Get all terraform plan jobs
 router.get("/terraform/plan-jobs", TerraformController.getAllTerraformPlanJobs);
 

@@ -8,6 +8,7 @@ export interface ModuleMappingResult {
   dependencies: ModuleDependency[];
   errors: string[];
   warnings: string[];
+  nodes: ParsedNode[]; // Add original nodes for cross-reference resolution
 }
 
 export interface ModuleDependency {
@@ -54,7 +55,7 @@ export class ModuleMapperService {
       // Map each node to a module
       for (const node of sortedNodes) {
         try {
-          const moduleResult = await this.mapNodeToModule(node, parsedArchitecture.metadata);
+          const moduleResult = await this.mapNodeToModule(node, parsedArchitecture.metadata, sortedNodes);
           if (moduleResult) {
             modules.push(moduleResult);
           }
@@ -107,7 +108,8 @@ export class ModuleMapperService {
       modules,
       dependencies,
       errors,
-      warnings
+      warnings,
+      nodes: parsedArchitecture.nodes
     };
   }
 
@@ -116,7 +118,8 @@ export class ModuleMapperService {
    */
   private static async mapNodeToModule(
     node: ParsedNode,
-    metadata: ArchitectureMetadata
+    metadata: ArchitectureMetadata,
+    allNodes?: ParsedNode[]
   ): Promise<GeneratedModule | null> {
     const [category, moduleName] = node.terraformModule.split('/');
 
@@ -133,7 +136,8 @@ export class ModuleMapperService {
     const variables = await this.mapConfigurationToVariables(
       node,
       moduleDefinition,
-      metadata
+      metadata,
+      allNodes
     );
 
     // Create module source path - use relative path from generated directory back to source
@@ -171,13 +175,14 @@ export class ModuleMapperService {
   private static async mapConfigurationToVariables(
     node: ParsedNode,
     moduleDefinition: TerraformModule,
-    metadata: ArchitectureMetadata
+    metadata: ArchitectureMetadata,
+    allNodes?: ParsedNode[]
   ): Promise<Record<string, any>> {
     const variables: Record<string, any> = {};
 
     // Set module-specific variables based on node configuration
     for (const moduleVar of moduleDefinition.variables) {
-      const value = this.mapVariableValue(node, moduleVar, metadata);
+      const value = this.mapVariableValue(node, moduleVar, metadata, allNodes);
       if (value !== undefined) {
         variables[moduleVar.name] = value;
       }
@@ -201,7 +206,8 @@ export class ModuleMapperService {
   private static mapVariableValue(
     node: ParsedNode,
     moduleVar: any,
-    metadata: ArchitectureMetadata
+    metadata: ArchitectureMetadata,
+    allNodes?: ParsedNode[]
   ): any {
     const { name: varName } = moduleVar;
     const config = node.configuration;
@@ -226,13 +232,16 @@ export class ModuleMapperService {
         return config.cidr_block || this.generateDefaultCidr(node);
 
       case 'vpc_id':
-        return this.generateResourceReference(node, 'vpc', 'vpc_id');
+        // Will be resolved in main.tf module call, not as variable default
+        return null;
 
       case 'subnet_id':
-        return this.generateResourceReference(node, 'subnet', 'subnet_id');
+        // Will be resolved in main.tf module call, not as variable default
+        return null;
 
       case 'security_group_ids':
-        return [this.generateResourceReference(node, 'security-group', 'security_group_id')];
+        // This will be resolved at module call time, not as a variable default
+        return [];
 
       case 'instance_type':
         return config.instance_type || 't3.micro';
@@ -245,6 +254,14 @@ export class ModuleMapperService {
 
       case 'map_public_ip_on_launch':
         return this.inferSubnetType(node) === 'public';
+
+      case 'internet_gateway_id':
+        // Will be resolved in main.tf module call, not as variable default
+        return null;
+
+      case 'nat_gateway_id':
+        // This will be resolved at module call time, not as a variable default
+        return null;
 
       default:
         return moduleVar.default;
@@ -269,10 +286,70 @@ export class ModuleMapperService {
   private static generateResourceReference(
     node: ParsedNode,
     resourceType: string,
-    outputName: string
+    outputName: string,
+    allNodes?: ParsedNode[]
   ): string {
-    // This will be resolved during Terraform generation
-    // Format: module.{module_instance}.{output_name}
+    if (!allNodes) {
+      // Fallback to generic reference if no context available
+      return `module.${resourceType}_instance.${outputName}`;
+    }
+
+    // Find the dependency node based on the resource type
+    let dependencyNode: ParsedNode | undefined;
+
+    if (resourceType === 'vpc') {
+      // For subnets, find the VPC they belong to
+      // Look for a VPC node that this subnet references
+      const vpcId = node.configuration?.vpc_id || 
+                   node.configuration?.awsVpcId || 
+                   node.parentId;
+                   
+      if (vpcId) {
+        dependencyNode = allNodes.find(n => 
+          n.resourceType === 'aws-vpc' && 
+          (n.id === vpcId || n.configuration?.awsVpcId === vpcId)
+        );
+      }
+      
+      // If still not found, look up the parent hierarchy
+      if (!dependencyNode && node.parentId) {
+        const parent = allNodes.find(n => n.id === node.parentId);
+        if (parent?.resourceType === 'aws-vpc') {
+          dependencyNode = parent;
+        } else if (parent) {
+          // Recursively look up the hierarchy
+          let current = parent;
+          while (current && current.parentId && !dependencyNode) {
+            const grandParent = allNodes.find(n => n.id === current.parentId);
+            if (grandParent?.resourceType === 'aws-vpc') {
+              dependencyNode = grandParent;
+              break;
+            }
+            if (grandParent) {
+              current = grandParent;
+            } else {
+              break;
+            }
+          }
+        }
+      }
+    } else if (resourceType === 'subnet') {
+      // For EC2 instances, find the subnet they belong to
+      const subnetId = node.configuration?.subnetId || node.parentId;
+      if (subnetId) {
+        dependencyNode = allNodes.find(n => 
+          (n.resourceType === 'aws-public-subnet' || n.resourceType === 'aws-private-subnet') && 
+          n.id === subnetId
+        );
+      }
+    }
+
+    if (dependencyNode) {
+      const moduleInstanceName = this.generateModuleInstanceName(dependencyNode);
+      return `module.${moduleInstanceName}.${outputName}`;
+    }
+
+    // Fallback to generic reference
     return `module.${resourceType}_instance.${outputName}`;
   }
 

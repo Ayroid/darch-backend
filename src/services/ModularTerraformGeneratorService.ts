@@ -37,7 +37,7 @@ export class ModularTerraformGeneratorService {
       operation: 'generateTerraformConfiguration'
     });
 
-    const mainTf = this.generateMainTf(mappingResult.modules, mappingResult.dependencies, metadata);
+    const mainTf = this.generateMainTf(mappingResult.modules, mappingResult.dependencies, metadata, mappingResult.nodes);
     const variablesTf = this.generateVariablesTf(mappingResult.modules, metadata);
     const outputsTf = this.generateOutputsTf(mappingResult.modules);
     const terraformTfvars = this.generateTerraformTfvars(mappingResult.modules, metadata);
@@ -95,7 +95,8 @@ export class ModularTerraformGeneratorService {
   private static generateMainTf(
     modules: GeneratedModule[],
     dependencies: ModuleDependency[],
-    metadata: ArchitectureMetadata
+    metadata: ArchitectureMetadata,
+    nodes: any[] = []
   ): string {
     const dependencyMap = new Map(dependencies.map(d => [d.moduleId, d]));
 
@@ -114,7 +115,7 @@ export class ModularTerraformGeneratorService {
 
     // Generate module blocks
     for (const module of sortedModules) {
-      content += this.generateModuleBlock(module, dependencyMap);
+      content += this.generateModuleBlock(module, dependencyMap, modules, nodes);
       content += '\n';
     }
 
@@ -145,15 +146,24 @@ locals {
    */
   private static generateModuleBlock(
     module: GeneratedModule,
-    dependencyMap: Map<string, ModuleDependency>
+    dependencyMap: Map<string, ModuleDependency>,
+    allModules: GeneratedModule[],
+    nodes: any[]
   ): string {
     let block = `module "${module.name}" {\n`;
     block += `  source = "${module.source}"\n\n`;
 
-    // Add variables
+    // Add variables with cross-reference resolution
     const sortedVars = Object.entries(module.variables).sort(([a], [b]) => a.localeCompare(b));
     for (const [key, value] of sortedVars) {
-      const formattedValue = this.formatTerraformValue(value);
+      let resolvedValue = value;
+      
+      // Resolve cross-module references for null values
+      if (value === null) {
+        resolvedValue = this.resolveCrossModuleReference(key, module, allModules, nodes);
+      }
+      
+      const formattedValue = this.formatTerraformValue(resolvedValue);
       block += `  ${key.padEnd(20)} = ${formattedValue}\n`;
     }
 
@@ -169,6 +179,116 @@ locals {
 
     block += '}\n';
     return block;
+  }
+
+  /**
+   * Resolve cross-module references for variables with null values
+   */
+  private static resolveCrossModuleReference(
+    variableName: string, 
+    currentModule: GeneratedModule, 
+    allModules: GeneratedModule[], 
+    nodes: any[]
+  ): string | null {
+    // Find the current node that corresponds to this module
+    const currentNode = nodes.find(node => {
+      const moduleName = this.generateModuleName(node);
+      return moduleName === currentModule.name;
+    });
+
+    if (!currentNode) {
+      return null;
+    }
+
+    switch (variableName) {
+      case 'vpc_id':
+        // Find the VPC this resource belongs to
+        const vpcNode = this.findVpcForNode(currentNode, nodes);
+        if (vpcNode) {
+          const vpcModuleName = this.generateModuleName(vpcNode);
+          return `module.${vpcModuleName}.vpc_id`;
+        }
+        break;
+
+      case 'internet_gateway_id':
+        // For public subnets, find the VPC's internet gateway
+        if (currentNode.resourceType === 'aws-public-subnet') {
+          const vpcNode = this.findVpcForNode(currentNode, nodes);
+          if (vpcNode) {
+            const vpcModuleName = this.generateModuleName(vpcNode);
+            return `module.${vpcModuleName}.internet_gateway_id`;
+          }
+        }
+        break;
+
+      case 'subnet_id':
+        // For EC2 instances, find the subnet they belong to
+        if (currentNode.resourceType === 'aws-ec2') {
+          const subnetId = currentNode.configuration?.subnetId || currentNode.parentId;
+          if (subnetId) {
+            const subnetNode = nodes.find(n => n.id === subnetId);
+            if (subnetNode) {
+              const subnetModuleName = this.generateModuleName(subnetNode);
+              return `module.${subnetModuleName}.subnet_id`;
+            }
+          }
+        }
+        break;
+
+      case 'nat_gateway_id':
+        // For private subnets, this would need NAT gateway logic
+        // For now, return null since we don't have NAT gateway implementation
+        return null;
+
+      default:
+        return null;
+    }
+
+    return null;
+  }
+
+  /**
+   * Find the VPC node that contains this node
+   */
+  private static findVpcForNode(node: any, nodes: any[]): any | null {
+    // Direct reference
+    const vpcId = node.configuration?.awsVpcId || node.configuration?.vpc_id;
+    if (vpcId) {
+      const vpcNode = nodes.find(n => n.id === vpcId);
+      if (vpcNode?.resourceType === 'aws-vpc') {
+        return vpcNode;
+      }
+    }
+
+    // Look up the parent hierarchy
+    let current = node;
+    while (current && current.parentId) {
+      const parent = nodes.find(n => n.id === current.parentId);
+      if (parent?.resourceType === 'aws-vpc') {
+        return parent;
+      }
+      current = parent;
+    }
+    
+    return null;
+  }
+
+  /**
+   * Generate module name from node (should match ModuleMapperService.generateModuleInstanceName logic)
+   */
+  private static generateModuleName(node: any): string {
+    // Use node name if available, otherwise use sanitized node ID
+    const baseName = node.name || node.id;
+    const sanitized = baseName
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '_')
+      .replace(/_{2,}/g, '_')
+      .replace(/^_+|_+$/g, '');
+
+    // Add a short hash to ensure uniqueness
+    const hash = node.id.slice(-6);
+
+    return `${sanitized}_${hash}`;
   }
 
   /**

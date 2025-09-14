@@ -846,6 +846,382 @@ export class TerraformController {
 		}
 	}
 
+	// =====================================
+	// TERRAFORM APPLY ENDPOINTS
+	// =====================================
+
+	/**
+	 * Apply Terraform infrastructure with actual terraform execution
+	 */
+	static async generateTerraformApply(
+		req: Request,
+		res: Response
+	): Promise<void> {
+		try {
+			const {
+				architectureData,
+				projectName = "infrastructure",
+			}: {
+				architectureData: ArchitectureData;
+				projectName?: string;
+			} = req.body;
+
+			if (!architectureData) {
+				const errorResponse = ResponseView.error(
+					"Architecture data is required"
+				);
+				res.status(400).json(errorResponse);
+				return;
+			}
+
+			logger.info(`🚀 Starting async Terraform apply execution for project: ${projectName}`, {
+				category: LogCategory.TERRAFORM,
+				component: 'TerraformController',
+				operation: 'executeApply',
+				projectName,
+				requestId: (req as any).id
+			});
+
+			// Check if project exists and get latest version
+			const existingProjectPath = await FileService.getProjectPath(projectName);
+			const latestVersionId = await FileService.getLatestProjectVersion(
+				projectName
+			);
+
+			if (!existingProjectPath || !latestVersionId) {
+				logger.error(`❌ Project '${projectName}' not found`, {
+					category: LogCategory.FILE,
+					component: 'TerraformController',
+					operation: 'executeApply',
+					projectName,
+					requestId: (req as any).id
+				});
+
+				const projects = await FileService.getAvailableProjects();
+				const errorResponse = ResponseView.error(
+					`Project '${projectName}' not found. Please generate Terraform files first.`,
+					`Available projects: ${projects.map((p) => p.name).join(", ")}`
+				);
+				res.status(404).json(errorResponse);
+				return;
+			}
+
+			logger.info(`📁 Using latest version '${latestVersionId}' at: ${existingProjectPath}`, {
+				category: LogCategory.FILE,
+				component: 'TerraformController',
+				operation: 'executeApply',
+				projectName,
+				versionId: latestVersionId,
+				projectPath: existingProjectPath,
+				requestId: (req as any).id
+			});
+
+			// Validate that the project has necessary Terraform files
+			const hasMainTf = await FileService.projectFileExists(
+				projectName,
+				"main.tf"
+			);
+
+			if (!hasMainTf) {
+				const errorResponse = ResponseView.error(
+					`Project '${projectName}' is missing required Terraform files. Please regenerate the project.`
+				);
+				res.status(400).json(errorResponse);
+				return;
+			}
+
+			// Process architecture data for validation
+			let processedArchitectureData: ArchitectureData;
+
+			if (TerraformController.isFrontendFormat(architectureData)) {
+				const transformationResult =
+					FrontendArchitectureTransformerService.transformToBackendFormat(
+						architectureData as any
+					);
+				if (transformationResult.errors.length > 0) {
+					const errorResponse = ResponseView.error(
+						"Frontend architecture transformation failed",
+						transformationResult.errors.join("; ")
+					);
+					res.status(400).json(errorResponse);
+					return;
+				}
+				processedArchitectureData = transformationResult.transformed;
+			} else {
+				processedArchitectureData = architectureData as ArchitectureData;
+			}
+
+			// Start async terraform apply execution
+			const jobId = await TerraformExecutionService.startTerraformApply(
+				existingProjectPath,
+				processedArchitectureData,
+				projectName
+			);
+
+			const response = ResponseView.success(
+				{
+					jobId,
+					status: "started",
+					message: "Terraform apply execution started",
+					projectPath: existingProjectPath,
+					projectName,
+					actualProjectId: latestVersionId,
+					pollUrl: `/api/terraform/apply-status/${jobId}`,
+				},
+				"Terraform apply execution started successfully"
+			);
+
+			res.json(response);
+		} catch (error) {
+			logger.error("❌ Error starting Terraform apply execution", {
+				error: error instanceof Error ? error.message : String(error),
+				category: LogCategory.TERRAFORM,
+				component: 'TerraformController',
+				operation: 'executeApply',
+				requestId: (req as any).id
+			});
+			const errorResponse = ResponseView.error(
+				"Failed to start Terraform apply execution",
+				error instanceof Error ? error.message : "Unknown error"
+			);
+			res.status(500).json(errorResponse);
+		}
+	}
+
+	/**
+	 * Get terraform apply job status (polling endpoint)
+	 */
+	static async getTerraformApplyStatus(
+		req: Request,
+		res: Response
+	): Promise<void> {
+		try {
+			const { jobId } = req.params;
+
+			if (!jobId) {
+				const errorResponse = ResponseView.error("Job ID is required");
+				res.status(400).json(errorResponse);
+				return;
+			}
+
+			const jobStatus = TerraformExecutionService.getJobStatus(jobId);
+
+			if (!jobStatus) {
+				const errorResponse = ResponseView.error("Job not found");
+				res.status(404).json(errorResponse);
+				return;
+			}
+
+			const response = ResponseView.success(
+				{
+					jobId: jobStatus.id,
+					status: jobStatus.status,
+					progress: jobStatus.progress,
+					message: jobStatus.message,
+					result: jobStatus.result,
+					error: jobStatus.error,
+					createdAt: jobStatus.createdAt,
+					updatedAt: jobStatus.updatedAt,
+					logs: jobStatus.logs || [],
+					rawOutput: jobStatus.rawOutput,
+				},
+				`Job ${jobStatus.status}`
+			);
+
+			res.json(response);
+		} catch (error) {
+			logger.error("❌ Error getting apply status", {
+				error: error instanceof Error ? error.message : String(error),
+				category: LogCategory.TERRAFORM,
+				component: 'TerraformController',
+				operation: 'getApplyStatus',
+				requestId: (req as any).id
+			});
+			const errorResponse = ResponseView.error(
+				"Failed to get apply status",
+				error instanceof Error ? error.message : "Unknown error"
+			);
+			res.status(500).json(errorResponse);
+		}
+	}
+
+	// =====================================
+	// TERRAFORM DESTROY ENDPOINTS
+	// =====================================
+
+	/**
+	 * Destroy Terraform infrastructure with actual terraform execution
+	 */
+	static async generateTerraformDestroy(
+		req: Request,
+		res: Response
+	): Promise<void> {
+		try {
+			const {
+				projectName = "infrastructure",
+				confirmDestroy = false,
+			}: {
+				projectName?: string;
+				confirmDestroy?: boolean;
+			} = req.body;
+
+			if (!confirmDestroy) {
+				const errorResponse = ResponseView.error(
+					"Destroy confirmation is required. Set 'confirmDestroy: true' to proceed."
+				);
+				res.status(400).json(errorResponse);
+				return;
+			}
+
+			logger.info(`🔥 Starting async Terraform destroy execution for project: ${projectName}`, {
+				category: LogCategory.TERRAFORM,
+				component: 'TerraformController',
+				operation: 'executeDestroy',
+				projectName,
+				requestId: (req as any).id
+			});
+
+			// Check if project exists and get latest version
+			const existingProjectPath = await FileService.getProjectPath(projectName);
+			const latestVersionId = await FileService.getLatestProjectVersion(
+				projectName
+			);
+
+			if (!existingProjectPath || !latestVersionId) {
+				logger.error(`❌ Project '${projectName}' not found`, {
+					category: LogCategory.FILE,
+					component: 'TerraformController',
+					operation: 'executeDestroy',
+					projectName,
+					requestId: (req as any).id
+				});
+
+				const projects = await FileService.getAvailableProjects();
+				const errorResponse = ResponseView.error(
+					`Project '${projectName}' not found.`,
+					`Available projects: ${projects.map((p) => p.name).join(", ")}`
+				);
+				res.status(404).json(errorResponse);
+				return;
+			}
+
+			logger.info(`📁 Using latest version '${latestVersionId}' at: ${existingProjectPath}`, {
+				category: LogCategory.FILE,
+				component: 'TerraformController',
+				operation: 'executeDestroy',
+				projectName,
+				versionId: latestVersionId,
+				projectPath: existingProjectPath,
+				requestId: (req as any).id
+			});
+
+			// Validate that the project has necessary Terraform files
+			const hasMainTf = await FileService.projectFileExists(
+				projectName,
+				"main.tf"
+			);
+
+			if (!hasMainTf) {
+				const errorResponse = ResponseView.error(
+					`Project '${projectName}' is missing required Terraform files.`
+				);
+				res.status(400).json(errorResponse);
+				return;
+			}
+
+			// Start async terraform destroy execution
+			const jobId = await TerraformExecutionService.startTerraformDestroy(
+				existingProjectPath,
+				projectName
+			);
+
+			const response = ResponseView.success(
+				{
+					jobId,
+					status: "started",
+					message: "Terraform destroy execution started",
+					projectPath: existingProjectPath,
+					projectName,
+					actualProjectId: latestVersionId,
+					pollUrl: `/api/terraform/destroy-status/${jobId}`,
+				},
+				"Terraform destroy execution started successfully"
+			);
+
+			res.json(response);
+		} catch (error) {
+			logger.error("❌ Error starting Terraform destroy execution", {
+				error: error instanceof Error ? error.message : String(error),
+				category: LogCategory.TERRAFORM,
+				component: 'TerraformController',
+				operation: 'executeDestroy',
+				requestId: (req as any).id
+			});
+			const errorResponse = ResponseView.error(
+				"Failed to start Terraform destroy execution",
+				error instanceof Error ? error.message : "Unknown error"
+			);
+			res.status(500).json(errorResponse);
+		}
+	}
+
+	/**
+	 * Get terraform destroy job status (polling endpoint)
+	 */
+	static async getTerraformDestroyStatus(
+		req: Request,
+		res: Response
+	): Promise<void> {
+		try {
+			const { jobId } = req.params;
+
+			if (!jobId) {
+				const errorResponse = ResponseView.error("Job ID is required");
+				res.status(400).json(errorResponse);
+				return;
+			}
+
+			const jobStatus = TerraformExecutionService.getJobStatus(jobId);
+
+			if (!jobStatus) {
+				const errorResponse = ResponseView.error("Job not found");
+				res.status(404).json(errorResponse);
+				return;
+			}
+
+			const response = ResponseView.success(
+				{
+					jobId: jobStatus.id,
+					status: jobStatus.status,
+					progress: jobStatus.progress,
+					message: jobStatus.message,
+					result: jobStatus.result,
+					error: jobStatus.error,
+					createdAt: jobStatus.createdAt,
+					updatedAt: jobStatus.updatedAt,
+					logs: jobStatus.logs || [],
+					rawOutput: jobStatus.rawOutput,
+				},
+				`Job ${jobStatus.status}`
+			);
+
+			res.json(response);
+		} catch (error) {
+			logger.error("❌ Error getting destroy status", {
+				error: error instanceof Error ? error.message : String(error),
+				category: LogCategory.TERRAFORM,
+				component: 'TerraformController',
+				operation: 'getDestroyStatus',
+				requestId: (req as any).id
+			});
+			const errorResponse = ResponseView.error(
+				"Failed to get destroy status",
+				error instanceof Error ? error.message : "Unknown error"
+			);
+			res.status(500).json(errorResponse);
+		}
+	}
+
 	/**
 	 * Refresh module registry
 	 */

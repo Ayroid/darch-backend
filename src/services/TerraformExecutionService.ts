@@ -426,6 +426,415 @@ export class TerraformExecutionService {
   }
 
   /**
+   * Start terraform apply execution asynchronously
+   */
+  static async startTerraformApply(
+    projectPath: string,
+    architectureData: any,
+    projectName: string
+  ): Promise<string> {
+    const jobId = `apply_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // Initialize job status
+    this.jobs.set(jobId, {
+      id: jobId,
+      status: 'pending',
+      progress: 0,
+      message: 'Initializing terraform apply...',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      logs: []
+    });
+
+    // Start async processing
+    this.processTerraformApply(jobId, projectPath, architectureData, projectName);
+
+    return jobId;
+  }
+
+  /**
+   * Start terraform destroy execution asynchronously
+   */
+  static async startTerraformDestroy(
+    projectPath: string,
+    projectName: string
+  ): Promise<string> {
+    const jobId = `destroy_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // Initialize job status
+    this.jobs.set(jobId, {
+      id: jobId,
+      status: 'pending',
+      progress: 0,
+      message: 'Initializing terraform destroy...',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      logs: []
+    });
+
+    // Start async processing
+    this.processTerraformDestroy(jobId, projectPath, projectName);
+
+    return jobId;
+  }
+
+  /**
+   * Process terraform apply asynchronously
+   */
+  private static async processTerraformApply(
+    jobId: string,
+    projectPath: string,
+    architectureData: any,
+    projectName: string
+  ): Promise<void> {
+    const updateJob = (updates: Partial<JobStatus>) => {
+      const currentJob = this.jobs.get(jobId);
+      if (currentJob) {
+        this.jobs.set(jobId, {
+          ...currentJob,
+          ...updates,
+          updatedAt: new Date().toISOString()
+        });
+      }
+    };
+
+    const addLog = (logLine: string) => {
+      const currentJob = this.jobs.get(jobId);
+      if (currentJob) {
+        currentJob.logs.push(`${new Date().toISOString()}: ${logLine}`);
+        if (currentJob.logs.length > 100) {
+          currentJob.logs = currentJob.logs.slice(-100);
+        }
+        this.jobs.set(jobId, {
+          ...currentJob,
+          updatedAt: new Date().toISOString()
+        });
+      }
+    };
+
+    try {
+      updateJob({ status: 'running', progress: 10, message: 'Checking terraform installation...' });
+      addLog('🔍 Checking terraform installation...');
+
+      // Step 1: Check if terraform is available
+      const terraformAvailable = await this.checkTerraformInstallation();
+      if (!terraformAvailable) {
+        addLog('❌ Terraform is not installed or not available in PATH');
+        updateJob({ 
+          status: 'failed', 
+          progress: 0, 
+          message: 'Terraform installation not found',
+          error: 'Terraform is not installed or not available in PATH'
+        });
+        return;
+      }
+
+      addLog('✅ Terraform installation verified');
+      updateJob({ progress: 20, message: 'Preparing workspace...' });
+
+      // Step 2: Ensure project directory exists
+      await this.ensureDirectoryExists(projectPath);
+      addLog(`📁 Project directory prepared: ${projectPath}`);
+
+      updateJob({ progress: 30, message: 'Checking terraform initialization...' });
+
+      // Step 3: Check if terraform is initialized
+      const isInitialized = await this.checkTerraformInit(projectPath);
+      if (!isInitialized) {
+        addLog('🔄 Running terraform init...');
+        updateJob({ progress: 40, message: 'Initializing terraform...' });
+        
+        await this.runTerraformInit(projectPath, addLog);
+        addLog('✅ Terraform initialization completed');
+      } else {
+        addLog('✅ Terraform already initialized');
+      }
+
+      updateJob({ progress: 60, message: 'Running terraform apply...' });
+      addLog('🚀 Starting terraform apply execution...');
+
+      // Step 4: Run terraform apply
+      const applyResult = await this.runTerraformApply(projectPath, addLog);
+
+      if (applyResult.success) {
+        addLog('✅ Terraform apply completed successfully');
+        updateJob({
+          status: 'completed',
+          progress: 100,
+          message: 'Infrastructure applied successfully',
+          result: applyResult,
+          rawOutput: applyResult.applyOutput
+        });
+      } else {
+        addLog(`❌ Terraform apply failed: ${applyResult.error}`);
+        updateJob({
+          status: 'failed',
+          progress: 100,
+          message: 'Apply execution failed',
+          error: applyResult.error,
+          rawOutput: applyResult.applyOutput
+        });
+      }
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      addLog(`❌ Apply process failed: ${errorMessage}`);
+      updateJob({
+        status: 'failed',
+        progress: 100,
+        message: 'Apply process failed',
+        error: errorMessage
+      });
+    }
+  }
+
+  /**
+   * Process terraform destroy asynchronously
+   */
+  private static async processTerraformDestroy(
+    jobId: string,
+    projectPath: string,
+    projectName: string
+  ): Promise<void> {
+    const updateJob = (updates: Partial<JobStatus>) => {
+      const currentJob = this.jobs.get(jobId);
+      if (currentJob) {
+        this.jobs.set(jobId, {
+          ...currentJob,
+          ...updates,
+          updatedAt: new Date().toISOString()
+        });
+      }
+    };
+
+    const addLog = (logLine: string) => {
+      const currentJob = this.jobs.get(jobId);
+      if (currentJob) {
+        currentJob.logs.push(`${new Date().toISOString()}: ${logLine}`);
+        if (currentJob.logs.length > 100) {
+          currentJob.logs = currentJob.logs.slice(-100);
+        }
+        this.jobs.set(jobId, {
+          ...currentJob,
+          updatedAt: new Date().toISOString()
+        });
+      }
+    };
+
+    try {
+      updateJob({ status: 'running', progress: 10, message: 'Checking terraform installation...' });
+      addLog('🔍 Checking terraform installation...');
+
+      // Step 1: Check if terraform is available
+      const terraformAvailable = await this.checkTerraformInstallation();
+      if (!terraformAvailable) {
+        addLog('❌ Terraform is not installed or not available in PATH');
+        updateJob({ 
+          status: 'failed', 
+          progress: 0, 
+          message: 'Terraform installation not found',
+          error: 'Terraform is not installed or not available in PATH'
+        });
+        return;
+      }
+
+      addLog('✅ Terraform installation verified');
+      updateJob({ progress: 20, message: 'Preparing workspace...' });
+
+      // Step 2: Ensure project directory exists
+      await this.ensureDirectoryExists(projectPath);
+      addLog(`📁 Project directory found: ${projectPath}`);
+
+      updateJob({ progress: 30, message: 'Checking terraform state...' });
+
+      // Step 3: Check if terraform is initialized and has state
+      const isInitialized = await this.checkTerraformInit(projectPath);
+      if (!isInitialized) {
+        addLog('⚠️ Project not initialized - running terraform init first...');
+        updateJob({ progress: 40, message: 'Initializing terraform...' });
+        
+        await this.runTerraformInit(projectPath, addLog);
+        addLog('✅ Terraform initialization completed');
+      } else {
+        addLog('✅ Terraform state found');
+      }
+
+      updateJob({ progress: 60, message: 'Running terraform destroy...' });
+      addLog('🔥 Starting terraform destroy execution...');
+      addLog('⚠️ WARNING: This will destroy all infrastructure managed by this project!');
+
+      // Step 4: Run terraform destroy
+      const destroyResult = await this.runTerraformDestroy(projectPath, addLog);
+
+      if (destroyResult.success) {
+        addLog('✅ Terraform destroy completed successfully');
+        addLog('🗑️ All infrastructure has been destroyed');
+        updateJob({
+          status: 'completed',
+          progress: 100,
+          message: 'Infrastructure destroyed successfully',
+          result: destroyResult,
+          rawOutput: destroyResult.destroyOutput
+        });
+      } else {
+        addLog(`❌ Terraform destroy failed: ${destroyResult.error}`);
+        updateJob({
+          status: 'failed',
+          progress: 100,
+          message: 'Destroy execution failed',
+          error: destroyResult.error,
+          rawOutput: destroyResult.destroyOutput
+        });
+      }
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      addLog(`❌ Destroy process failed: ${errorMessage}`);
+      updateJob({
+        status: 'failed',
+        progress: 100,
+        message: 'Destroy process failed',
+        error: errorMessage
+      });
+    }
+  }
+
+  /**
+   * Run terraform apply command
+   */
+  private static async runTerraformApply(
+    projectPath: string,
+    addLog: (log: string) => void
+  ): Promise<any> {
+    return new Promise((resolve, reject) => {
+      addLog('📋 Running: terraform apply -auto-approve');
+      
+      const terraform = spawn('terraform', ['apply', '-auto-approve'], {
+        cwd: projectPath,
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      terraform.stdout?.on('data', (data) => {
+        const output = data.toString();
+        stdout += output;
+        
+        // Stream logs to frontend
+        const lines = output.split('\n').filter((line: string) => line.trim());
+        lines.forEach((line: string) => addLog(`[APPLY] ${line}`));
+      });
+
+      terraform.stderr?.on('data', (data) => {
+        const output = data.toString();
+        stderr += output;
+        
+        // Stream error logs to frontend
+        const lines = output.split('\n').filter((line: string) => line.trim());
+        lines.forEach((line: string) => addLog(`[ERROR] ${line}`));
+      });
+
+      terraform.on('close', (code) => {
+        const fullOutput = stdout + stderr;
+        
+        if (code === 0) {
+          resolve({
+            success: true,
+            applyOutput: fullOutput,
+            resourcesCreated: this.extractResourceCount(stdout),
+            warnings: this.extractWarnings(stdout)
+          });
+        } else {
+          resolve({
+            success: false,
+            applyOutput: fullOutput,
+            error: `Terraform apply failed with exit code ${code}`,
+            warnings: this.extractWarnings(fullOutput)
+          });
+        }
+      });
+
+      terraform.on('error', (error) => {
+        addLog(`❌ Failed to run terraform apply: ${error.message}`);
+        reject(new Error(`Failed to run terraform apply: ${error.message}`));
+      });
+    });
+  }
+
+  /**
+   * Run terraform destroy command
+   */
+  private static async runTerraformDestroy(
+    projectPath: string,
+    addLog: (log: string) => void
+  ): Promise<any> {
+    return new Promise((resolve, reject) => {
+      addLog('📋 Running: terraform destroy -auto-approve');
+      
+      const terraform = spawn('terraform', ['destroy', '-auto-approve'], {
+        cwd: projectPath,
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      terraform.stdout?.on('data', (data) => {
+        const output = data.toString();
+        stdout += output;
+        
+        // Stream logs to frontend
+        const lines = output.split('\n').filter((line: string) => line.trim());
+        lines.forEach((line: string) => addLog(`[DESTROY] ${line}`));
+      });
+
+      terraform.stderr?.on('data', (data) => {
+        const output = data.toString();
+        stderr += output;
+        
+        // Stream error logs to frontend
+        const lines = output.split('\n').filter((line: string) => line.trim());
+        lines.forEach((line: string) => addLog(`[ERROR] ${line}`));
+      });
+
+      terraform.on('close', (code) => {
+        const fullOutput = stdout + stderr;
+        
+        if (code === 0) {
+          resolve({
+            success: true,
+            destroyOutput: fullOutput,
+            resourcesDestroyed: this.extractDestroyCount(stdout),
+            warnings: this.extractWarnings(stdout)
+          });
+        } else {
+          resolve({
+            success: false,
+            destroyOutput: fullOutput,
+            error: `Terraform destroy failed with exit code ${code}`,
+            warnings: this.extractWarnings(fullOutput)
+          });
+        }
+      });
+
+      terraform.on('error', (error) => {
+        addLog(`❌ Failed to run terraform destroy: ${error.message}`);
+        reject(new Error(`Failed to run terraform destroy: ${error.message}`));
+      });
+    });
+  }
+
+  /**
+   * Extract destroy count from terraform output
+   */
+  private static extractDestroyCount(destroyOutput: string): number {
+    if (!destroyOutput) return 0;
+    const destroyMatch = destroyOutput.match(/Destroy complete! Resources: (\d+) destroyed/);
+    return destroyMatch ? parseInt(destroyMatch[1], 10) || 0 : 0;
+  }
+
+  /**
    * Clean up old completed jobs (run periodically)
    */
   static cleanupCompletedJobs(maxAge: number = 3600000): void { // 1 hour default

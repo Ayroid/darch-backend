@@ -19,7 +19,7 @@ export interface TerraformWorkspaceStructure {
 
 export class LocalFileManager {
   private baseDir: string;
-  private readonly ROOT_USER_ID = 'root-user';
+  private readonly ROOT_USER_ID = 'sudo';
 
   constructor(baseDir: string = './src/output') {
     this.baseDir = path.resolve(baseDir);

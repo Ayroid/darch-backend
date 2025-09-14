@@ -15,7 +15,7 @@ The generate Terraform API endpoint has been updated to return only relevant sta
   "data": {
     "project": {
       "name": "infrastructure",
-      "path": "/home/ayroid/Documents/Private/Projects/Darch/backend/src/output/users/root-user/infrastructure-2025-09-13T08-01-11-036Z",
+      "path": "/home/ayroid/Documents/Private/Projects/Darch/backend/src/output/users/sudo/infrastructure-2025-09-13T08-01-11-036Z",
       "generatedAt": "2025-09-13T08:01:11.036Z"
     },
     "files": {

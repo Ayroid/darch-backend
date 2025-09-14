@@ -155,7 +155,7 @@ FileService.saveGeneratedTerraformFiles(terraformResult, projectName)
 
 **File Structure Created:**
 ```
-/src/output/users/root-user/{project-name-timestamp}/
+/src/output/users/sudo/{project-name-timestamp}/
 ├── generated/
 │   ├── main.tf
 │   ├── variables.tf

@@ -155,7 +155,7 @@ export class FileService {
       return null;
     }
 
-    const generatedPath = this.fileManager.getGeneratedPath('root-user', projectName);
+    const generatedPath = this.fileManager.getGeneratedPath('sudo', projectName);
 
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];

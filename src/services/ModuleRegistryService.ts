@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { TerraformModule, ModuleMetadata, ModuleVariable, ModuleOutput } from '../models/TerraformModule.js';
+import { logger, LogCategory, LogLevel } from '../utils/Logger.js';
 
 export class ModuleRegistryService {
   private static modulesBasePath = path.resolve(process.cwd(), 'src/data/terraform-modules');
@@ -13,14 +14,28 @@ export class ModuleRegistryService {
   static async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    console.log('🔄 Initializing Terraform Module Registry...');
+    logger.module(LogLevel.INFO, '🔄 Initializing Terraform Module Registry', {
+      component: 'ModuleRegistryService',
+      operation: 'initialize'
+    });
 
     try {
       await this.scanModules();
       this.initialized = true;
-      console.log(`✅ Module Registry initialized with ${this.moduleRegistry.size} modules`);
+
+      logger.module(LogLevel.INFO, '✅ Module Registry initialized successfully', {
+        component: 'ModuleRegistryService',
+        moduleCount: this.moduleRegistry.size,
+        operation: 'initialize'
+      });
     } catch (error) {
-      console.error('❌ Failed to initialize Module Registry:', error);
+      logger.error('❌ Failed to initialize Module Registry', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        category: LogCategory.MODULE,
+        component: 'ModuleRegistryService',
+        operation: 'initialize'
+      });
       throw error;
     }
   }
@@ -41,9 +56,22 @@ export class ModuleRegistryService {
           const module = await this.parseModule(category, moduleName, modulePath);
           const moduleKey = `${category}/${moduleName}`;
           this.moduleRegistry.set(moduleKey, module);
-          console.log(`📦 Registered module: ${moduleKey}`);
+
+          logger.module(LogLevel.DEBUG, '📦 Registered module', {
+            moduleKey,
+            moduleCategory: category,
+            moduleName,
+            component: 'ModuleRegistryService',
+            operation: 'scanModules'
+          });
         } catch (error) {
-          console.warn(`⚠️ Failed to parse module ${category}/${moduleName}:`, error);
+          logger.warn(`⚠️ Failed to parse module ${category}/${moduleName}`, {
+            moduleCategory: category,
+            moduleName,
+            error: error instanceof Error ? error.message : String(error),
+            component: 'ModuleRegistryService',
+            operation: 'scanModules'
+          });
         }
       }
     }

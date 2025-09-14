@@ -1,4 +1,5 @@
 import { ArchitectureData, ArchitectureNode } from '../models/Architecture.js';
+import { logger, LogCategory, LogLevel } from '../utils/Logger.js';
 
 export interface ParsedArchitecture {
   nodes: ParsedNode[];
@@ -63,7 +64,12 @@ export class ArchitectureParserService {
    * Parse and validate architecture data from JSON
    */
   static parseArchitecture(architectureData: ArchitectureData): ParsedArchitecture {
-    console.log('🔄 Parsing architecture data...');
+    logger.architecture(LogLevel.INFO, '🔄 Parsing architecture data', {
+      component: 'ArchitectureParserService',
+      operation: 'parseArchitecture',
+      nodesCount: architectureData.nodes?.length || 0,
+      connectionsCount: architectureData.connections?.length || 0
+    });
 
     const parsedNodes = this.parseNodes(architectureData.nodes);
     const parsedConnections = this.parseConnections(architectureData.connections || []);
@@ -75,7 +81,13 @@ export class ArchitectureParserService {
     // Validate the architecture
     const validation = this.validateArchitecture(parsedNodes, parsedConnections, metadata);
 
-    console.log(`✅ Parsed ${parsedNodes.length} nodes and ${parsedConnections.length} connections`);
+    logger.architecture(LogLevel.INFO, '✅ Architecture parsing completed', {
+      component: 'ArchitectureParserService',
+      operation: 'parseArchitecture',
+      parsedNodesCount: parsedNodes.length,
+      parsedConnectionsCount: parsedConnections.length,
+      validationPassed: validation.valid
+    });
 
     return {
       nodes: parsedNodes,
@@ -179,7 +191,14 @@ export class ArchitectureParserService {
 
     const module = moduleMap[resourceType.toLowerCase()];
     if (!module) {
-      console.warn(`⚠️ No module mapping found for resource type: ${resourceType}`);
+      logger.warn(`⚠️ No module mapping found for resource type: ${resourceType}`, {
+        resourceType,
+        availableTypes: Object.keys(moduleMap),
+        fallbackModule: 'compute/ec2',
+        category: LogCategory.MODULE,
+        component: 'ArchitectureParserService',
+        operation: 'getModuleForResourceType'
+      });
       return 'compute/ec2'; // Default fallback
     }
 

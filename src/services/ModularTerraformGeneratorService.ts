@@ -1,6 +1,7 @@
 import { GeneratedModule } from '../models/TerraformModule.js';
 import { ModuleDependency, ModuleMappingResult } from './ModuleMapperService.js';
 import { ArchitectureMetadata } from './ArchitectureParserService.js';
+import { logger, LogCategory, LogLevel } from '../utils/Logger.js';
 
 export interface TerraformGenerationResult {
   mainTf: string;
@@ -27,7 +28,14 @@ export class ModularTerraformGeneratorService {
     metadata: ArchitectureMetadata,
     projectName: string = 'infrastructure'
   ): TerraformGenerationResult {
-    console.log('🔄 Generating modular Terraform configuration...');
+    logger.terraform(LogLevel.INFO, '🔄 Generating modular Terraform configuration', {
+      projectName,
+      moduleCount: mappingResult.modules.length,
+      dependencyCount: mappingResult.dependencies.length,
+      provider: metadata.provider,
+      component: 'ModularTerraformGeneratorService',
+      operation: 'generateTerraformConfiguration'
+    });
 
     const mainTf = this.generateMainTf(mappingResult.modules, mappingResult.dependencies, metadata);
     const variablesTf = this.generateVariablesTf(mappingResult.modules, metadata);
@@ -63,7 +71,13 @@ export class ModularTerraformGeneratorService {
       }
     ];
 
-    console.log('✅ Generated Terraform configuration with modules');
+    logger.terraform(LogLevel.INFO, '✅ Generated Terraform configuration with modules', {
+      projectName,
+      filesGenerated: files.length,
+      totalLinesGenerated: files.reduce((sum, file) => sum + file.content.split('\n').length, 0),
+      component: 'ModularTerraformGeneratorService',
+      operation: 'generateTerraformConfiguration'
+    });
 
     return {
       mainTf,

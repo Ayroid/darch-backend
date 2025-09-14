@@ -1,6 +1,7 @@
 import { ParsedNode, ParsedArchitecture, ArchitectureMetadata } from './ArchitectureParserService.js';
 import { ModuleRegistryService } from './ModuleRegistryService.js';
 import { TerraformModule, ModuleConfiguration, GeneratedModule } from '../models/TerraformModule.js';
+import { logger, LogCategory, LogLevel } from '../utils/Logger.js';
 
 export interface ModuleMappingResult {
   modules: GeneratedModule[];
@@ -31,7 +32,15 @@ export class ModuleMapperService {
   static async mapArchitectureToModules(
     parsedArchitecture: ParsedArchitecture
   ): Promise<ModuleMappingResult> {
-    console.log('🔄 Mapping architecture to Terraform modules...');
+    const startTime = Date.now();
+
+    logger.module(LogLevel.INFO, '🔄 Mapping architecture to Terraform modules', {
+      nodesCount: parsedArchitecture.nodes.length,
+      connectionsCount: parsedArchitecture.connections.length,
+      provider: parsedArchitecture.metadata.provider,
+      component: 'ModuleMapperService',
+      operation: 'mapArchitectureToModules'
+    });
 
     const errors: string[] = [];
     const warnings: string[] = [];
@@ -52,7 +61,15 @@ export class ModuleMapperService {
         } catch (error) {
           const errorMessage = `Failed to map node ${node.id}: ${error instanceof Error ? error.message : 'Unknown error'}`;
           errors.push(errorMessage);
-          console.error('❌', errorMessage);
+
+          logger.error('❌ Failed to map node to module', {
+            nodeId: node.id,
+            resourceType: node.resourceType,
+            error: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
+            category: LogCategory.MODULE,
+            component: 'ModuleMapperService'
+          });
         }
       }
 
@@ -60,12 +77,30 @@ export class ModuleMapperService {
       const dependencyGraph = this.buildModuleDependencies(modules, sortedNodes);
       dependencies.push(...dependencyGraph);
 
-      console.log(`✅ Successfully mapped ${modules.length} modules`);
+      const duration = Date.now() - startTime;
+
+      logger.module(LogLevel.INFO, '✅ Successfully mapped architecture to modules', {
+        modulesCount: modules.length,
+        errorsCount: errors.length,
+        warningsCount: warnings.length,
+        dependenciesCount: dependencies.length,
+        duration,
+        component: 'ModuleMapperService'
+      });
 
     } catch (error) {
+      const duration = Date.now() - startTime;
       const errorMessage = `Failed to map architecture: ${error instanceof Error ? error.message : 'Unknown error'}`;
       errors.push(errorMessage);
-      console.error('❌', errorMessage);
+
+      logger.error('❌ Failed to map architecture', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        nodesCount: parsedArchitecture.nodes.length,
+        duration,
+        category: LogCategory.MODULE,
+        component: 'ModuleMapperService'
+      });
     }
 
     return {

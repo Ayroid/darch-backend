@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { logger, LogCategory, LogLevel } from '../utils/Logger.js';
 
 export interface UserProjectInfo {
   userId: string;
@@ -69,13 +70,36 @@ export class LocalFileManager {
     // Create only the project directory - state and .terraform created by terraform commands
     await fs.promises.mkdir(projectPath, { recursive: true });
 
-    console.log(`📁 Created project structure: ${projectPath}`);
+    logger.file(LogLevel.INFO, '📁 Created project structure', {
+      projectPath,
+      userId,
+      projectId,
+      component: 'LocalFileManager',
+      operation: 'saveProject'
+    });
 
     // Write terraform files directly to the project directory
+    const fileCount = Object.keys(terraformFiles).length;
+    logger.file(LogLevel.INFO, `📝 Writing ${fileCount} Terraform files`, {
+      projectPath,
+      userId,
+      projectId,
+      fileCount,
+      component: 'LocalFileManager'
+    });
+
     for (const [filename, content] of Object.entries(terraformFiles)) {
       const filePath = path.join(projectPath, filename);
       await fs.promises.writeFile(filePath, content);
-      console.log(`💾 Saved: ${filename}`);
+
+      logger.file(LogLevel.DEBUG, '💾 Saved Terraform file', {
+        filename,
+        filePath,
+        fileSize: content.length,
+        userId,
+        projectId,
+        component: 'LocalFileManager'
+      });
     }
 
     return {
@@ -239,10 +263,28 @@ export class LocalFileManager {
 
     try {
       await fs.promises.rmdir(projectPath, { recursive: true });
-      console.log(`🗑️ Deleted project: ${projectPath}`);
+
+      logger.file(LogLevel.INFO, '🗑️ Successfully deleted project', {
+        projectId,
+        projectPath,
+        userId,
+        component: 'LocalFileManager',
+        operation: 'deleteProject'
+      });
+
       return true;
     } catch (error) {
-      console.error(`❌ Error deleting project ${projectId}:`, error);
+      logger.error('❌ Error deleting project', {
+        projectId,
+        projectPath,
+        userId,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        category: LogCategory.FILE,
+        component: 'LocalFileManager',
+        operation: 'deleteProject'
+      });
+
       return false;
     }
   }
@@ -283,7 +325,14 @@ export class LocalFileManager {
     await fs.promises.mkdir(usersPath, { recursive: true });
     await fs.promises.mkdir(rootUserPath, { recursive: true });
 
-    console.log(`🚀 Initialized workspace structure at: ${this.baseDir}`);
+    logger.file(LogLevel.INFO, '🚀 Initialized workspace structure', {
+      baseDir: this.baseDir,
+      usersPath,
+      rootUserPath,
+      rootUserId: this.ROOT_USER_ID,
+      component: 'LocalFileManager',
+      operation: 'initializeWorkspace'
+    });
   }
 
 

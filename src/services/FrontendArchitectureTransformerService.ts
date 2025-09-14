@@ -1,4 +1,5 @@
 import { ArchitectureData, ArchitectureNode, NodeConnection } from '../models/Architecture.js';
+import { logger, LogCategory, LogLevel } from '../utils/Logger.js';
 
 // Frontend type definitions matching the actual frontend structure
 export interface FrontendPosition {
@@ -184,7 +185,14 @@ export class FrontendArchitectureTransformerService {
    * Transform frontend architecture data to backend format
    */
   static transformToBackendFormat(frontendData: FrontendArchitectureData): TransformationResult {
-    console.log('🔄 Transforming frontend architecture data to backend format...');
+    const startTime = Date.now();
+
+    logger.architecture(LogLevel.INFO, '🔄 Transforming frontend architecture data to backend format', {
+      nodesCount: frontendData.nodes?.length || 0,
+      connectionsCount: frontendData.connections?.length || 0,
+      provider: frontendData.metadata?.provider,
+      component: 'FrontendArchitectureTransformerService'
+    });
 
     const warnings: string[] = [];
     const errors: string[] = [];
@@ -219,7 +227,17 @@ export class FrontendArchitectureTransformerService {
         outputs: frontendData.outputs || {}
       };
 
-      console.log(`✅ Transformation completed: ${transformedNodes.length} nodes, ${transformedConnections.length} connections`);
+      const duration = Date.now() - startTime;
+
+      logger.architecture(LogLevel.INFO, '✅ Frontend transformation completed successfully', {
+        nodesCount: transformedNodes.length,
+        connectionsCount: transformedConnections.length,
+        warningsCount: warnings.length,
+        errorsCount: errors.length,
+        mappingsCount: mappings.length,
+        duration,
+        component: 'FrontendArchitectureTransformerService'
+      });
 
       return {
         transformed,
@@ -231,7 +249,12 @@ export class FrontendArchitectureTransformerService {
     } catch (error) {
       const errorMessage = `Failed to transform architecture data: ${error instanceof Error ? error.message : 'Unknown error'}`;
       errors.push(errorMessage);
-      console.error('❌', errorMessage);
+      logger.error('❌ Architecture transformation failed', {
+        error: errorMessage,
+        category: LogCategory.ARCHITECTURE,
+        component: 'FrontendArchitectureTransformerService',
+        operation: 'transform'
+      });
 
       return {
         transformed: this.createEmptyArchitecture(),
@@ -380,7 +403,13 @@ export class FrontendArchitectureTransformerService {
       } catch (error) {
         const errorMessage = `Failed to transform node ${frontendNode.id}: ${error instanceof Error ? error.message : 'Unknown error'}`;
         errors.push(errorMessage);
-        console.error('❌', errorMessage);
+        logger.error('❌ Node transformation failed', {
+          error: errorMessage,
+          nodeId: frontendNode.id,
+          category: LogCategory.ARCHITECTURE,
+          component: 'FrontendArchitectureTransformerService',
+          operation: 'transformNode'
+        });
       }
     }
 

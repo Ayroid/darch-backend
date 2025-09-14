@@ -1,6 +1,7 @@
 import { spawn } from 'child_process';
 import fs from 'fs/promises';
 import path from 'path';
+import { logger, LogCategory, LogLevel } from '../utils/Logger.js';
 
 export interface JobStatus {
   id: string;
@@ -150,7 +151,7 @@ export class TerraformExecutionService {
         // Even if initialized, verify modules are properly installed
         updateJob({ progress: 35, message: 'Verifying module installation...' });
         addLog('🔍 Verifying terraform modules are installed...');
-        
+
         const modulesInstalled = await this.checkModulesInstalled(projectPath);
         if (!modulesInstalled) {
           updateJob({ progress: 40, message: 'Reinstalling terraform modules...' });
@@ -199,8 +200,15 @@ export class TerraformExecutionService {
       });
 
     } catch (error) {
-      console.error(`❌ Terraform plan job ${jobId} failed:`, error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+      logger.logTerraformJob(jobId, 'plan', 'failed', {
+        error: errorMessage,
+        stack: error instanceof Error ? error.stack : undefined,
+        projectPath,
+        component: 'TerraformExecutionService'
+      });
+
       addLog(`❌ Job failed: ${errorMessage}`);
       updateJob({
         status: 'failed',
@@ -246,13 +254,13 @@ export class TerraformExecutionService {
     try {
       const terraformDir = path.join(projectPath, '.terraform');
       const terraformState = path.join(terraformDir, 'terraform.tfstate');
-      
+
       // Check if .terraform directory exists
       await fs.access(terraformDir);
-      
+
       // Check if terraform.tfstate exists (indicates successful init)
       await fs.access(terraformState);
-      
+
       return true;
     } catch {
       // Any of the checks failed, need to run init
@@ -267,13 +275,13 @@ export class TerraformExecutionService {
     try {
       const terraformModulesDir = path.join(projectPath, '.terraform', 'modules');
       const moduleJsonFile = path.join(terraformModulesDir, 'modules.json');
-      
+
       // Check if modules directory exists
       await fs.access(terraformModulesDir);
-      
+
       // Check if modules.json exists (indicates modules were downloaded)
       await fs.access(moduleJsonFile);
-      
+
       return true;
     } catch {
       // Modules not properly installed

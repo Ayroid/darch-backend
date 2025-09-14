@@ -4,6 +4,7 @@ import { ConfigUtils } from "./utils/ConfigUtils.js";
 import { LoggingMiddleware } from "./middleware/LoggingMiddleware.js";
 import { ErrorMiddleware } from "./middleware/ErrorMiddleware.js";
 import { TerraformExecutionService } from "./services/TerraformExecutionService.js";
+import { logger, LogCategory, LogLevel } from "./utils/Logger.js";
 import routes from "./routes/index.js";
 
 export class App {
@@ -13,10 +14,21 @@ export class App {
 	constructor() {
 		this.app = express();
 		this.port = ConfigUtils.getPort();
+
+		logger.app(LogLevel.INFO, '⚙️ Initializing Darch Backend Application', {
+			component: 'App',
+			port: this.port,
+			environment: ConfigUtils.isDevelopment() ? 'development' : 'production'
+		});
+
 		this.initializeMiddleware();
 		this.initializeRoutes();
 		this.initializeErrorHandling();
 		this.initializeJobCleanup();
+
+		logger.app(LogLevel.INFO, '✅ Application initialization completed', {
+			component: 'App'
+		});
 	}
 
 	private initializeMiddleware(): void {
@@ -55,23 +67,47 @@ export class App {
 
 	private initializeJobCleanup(): void {
 		// Clean up completed jobs every 10 minutes
+		const cleanupInterval = 10 * 60 * 1000;
+
+		logger.app(LogLevel.INFO, '⚙️ Initializing job cleanup service', {
+			component: 'JobCleanup',
+			intervalMs: cleanupInterval
+		});
+
 		setInterval(() => {
+			logger.app(LogLevel.DEBUG, '🧹 Running job cleanup', {
+				component: 'JobCleanup'
+			});
 			TerraformExecutionService.cleanupCompletedJobs();
-		}, 10 * 60 * 1000);
+		}, cleanupInterval);
 	}
 
 	public start(): void {
+		const startTime = Date.now();
+
 		this.app.listen(this.port, () => {
-			console.log(`🚀 Backend server running on http://localhost:${this.port}`);
-			console.log(`📊 Health check: http://localhost:${this.port}/health`);
-			console.log(
-				`🔧 Terraform API: http://localhost:${this.port}/api/terraform/generate`
-			);
-			console.log(
-				`🌍 Environment: ${
-					ConfigUtils.isDevelopment() ? "Development" : "Production"
-				}`
-			);
+			const bootTime = Date.now() - startTime;
+			const environment = ConfigUtils.isDevelopment() ? "Development" : "Production";
+
+			logger.app(LogLevel.INFO, '🚀 Backend server started successfully', {
+				component: 'Server',
+				port: this.port,
+				environment,
+				bootTimeMs: bootTime,
+				urls: {
+					server: `http://localhost:${this.port}`,
+					health: `http://localhost:${this.port}/health`,
+					terraform: `http://localhost:${this.port}/api/terraform/generate`
+				}
+			});
+
+			// Also log to console for immediate visibility
+			if (ConfigUtils.isDevelopment()) {
+				console.log(`\n🚀 Backend server running on http://localhost:${this.port}`);
+				console.log(`📊 Health check: http://localhost:${this.port}/health`);
+				console.log(`🔧 Terraform API: http://localhost:${this.port}/api/terraform/generate`);
+				console.log(`🌍 Environment: ${environment}\n`);
+			}
 		});
 	}
 

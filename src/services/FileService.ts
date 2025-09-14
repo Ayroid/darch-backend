@@ -1,5 +1,6 @@
-import fs from "fs";
-import path from "path";
+import fs from 'fs';
+import path from 'path';
+import { logger, LogCategory, LogLevel } from '../utils/Logger.js';
 import archiver from "archiver";
 import { TerraformFile } from "../models/Architecture.js";
 import { TerraformGenerationResult } from "./ModularTerraformGeneratorService.js";
@@ -107,8 +108,6 @@ export class FileService {
 	): Promise<{ projectDir: string; files: string[] }> {
 		await this.ensureInitialized();
 
-		console.log("💾 Saving generated Terraform files...");
-
 		// Create versioned project name
 		const versionedProjectId = await this.getNextVersionedProjectName(
 			projectName
@@ -116,6 +115,14 @@ export class FileService {
 
 		// Convert TerraformGenerationResult files to Record<string, string>
 		const terraformFiles: Record<string, string> = {};
+
+		logger.file(LogLevel.INFO, '💾 Saving generated Terraform files', {
+			projectName,
+			versionedProjectId,
+			fileCount: terraformResult.files.length,
+			component: 'FileService',
+			operation: 'saveTerraformFiles'
+		});
 		for (const file of terraformResult.files) {
 			terraformFiles[file.filename] = file.content;
 		}
@@ -126,9 +133,14 @@ export class FileService {
 			terraformFiles
 		);
 
-		console.log(
-			`✅ Saved ${terraformResult.files.length} Terraform files to ${projectInfo.projectPath}`
-		);
+		logger.file(LogLevel.INFO, '✅ Terraform files saved successfully', {
+			projectName,
+			versionedProjectId,
+			fileCount: terraformResult.files.length,
+			projectPath: projectInfo.projectPath,
+			filenames: terraformResult.files.map((f) => f.filename),
+			component: 'FileService'
+		});
 
 		return {
 			projectDir: projectInfo.projectPath,
@@ -267,7 +279,12 @@ export class FileService {
 
 			return null;
 		} catch (error) {
-			console.error("Error checking project path:", error);
+			logger.error('Error checking project path', {
+				error: error instanceof Error ? error.message : String(error),
+				stack: error instanceof Error ? error.stack : undefined,
+				category: LogCategory.FILE,
+				component: 'FileService'
+			});
 			return null;
 		}
 	}
@@ -424,9 +441,11 @@ export class FileService {
 			}
 		}
 
-		console.log(
-			`🔄 Found ${baseProjectGroups.size} project groups to migrate...`
-		);
+		logger.file(LogLevel.INFO, '🔄 Found project groups to migrate', {
+			projectGroupsCount: baseProjectGroups.size,
+			component: 'FileService',
+			operation: 'migrateTimestampProjectsToVersioned'
+		});
 
 		// For each base project, create versioned projects
 		for (const [baseName, timestampProjects] of baseProjectGroups) {
@@ -436,15 +455,24 @@ export class FileService {
 					new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
 			);
 
-			console.log(
-				`📦 Migrating ${timestampProjects.length} versions of project '${baseName}'...`
-			);
+			logger.file(LogLevel.INFO, '📦 Migrating project versions', {
+				baseName,
+				versionsCount: timestampProjects.length,
+				component: 'FileService'
+			});
 
 			// Note: This is a read-only migration that shows what would happen
 			// In a real implementation, you'd need to rename directories and update the LocalFileManager
 			timestampProjects.forEach((project, index) => {
 				const newVersionedName = `${baseName}-version${index + 1}`;
-				console.log(`  ${project.projectId} → ${newVersionedName}`);
+
+				logger.file(LogLevel.DEBUG, 'Project migration mapping', {
+					oldName: project.projectId,
+					newName: newVersionedName,
+					baseName,
+					version: index + 1,
+					component: 'FileService'
+				});
 			});
 		}
 	}

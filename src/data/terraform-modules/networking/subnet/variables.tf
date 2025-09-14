@@ -59,6 +59,18 @@ variable "nat_gateway_id" {
   default     = null
 }
 
+variable "create_igw_route" {
+  description = "Controls if a route to the Internet Gateway should be created for public subnets"
+  type        = bool
+  default     = true
+}
+
+variable "create_nat_route" {
+  description = "Controls if a route to the NAT Gateway should be created for private subnets"
+  type        = bool
+  default     = true
+}
+
 variable "tags" {
   description = "A map of tags to assign to the resource"
   type        = map(string)

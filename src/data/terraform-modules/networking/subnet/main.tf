@@ -36,20 +36,30 @@ resource "aws_route_table_association" "this" {
   route_table_id = aws_route_table.this[0].id
 }
 
+# Local values to control route creation
+locals {
+  create_igw_route = var.subnet_type == "public" && var.create_route_table && var.create_igw_route
+  create_nat_route = var.subnet_type == "private" && var.create_route_table && var.create_nat_route
+}
+
 # Route to internet gateway for public subnets
 resource "aws_route" "internet_gateway" {
-  count = var.subnet_type == "public" && var.internet_gateway_id != null && var.create_route_table ? 1 : 0
+  for_each = local.create_igw_route ? toset(["default"]) : toset([])
 
   route_table_id         = aws_route_table.this[0].id
   destination_cidr_block = "0.0.0.0/0"
   gateway_id             = var.internet_gateway_id
+
+  depends_on = [aws_route_table.this]
 }
 
 # Route to NAT gateway for private subnets
 resource "aws_route" "nat_gateway" {
-  count = var.subnet_type == "private" && var.nat_gateway_id != null && var.create_route_table ? 1 : 0
+  for_each = local.create_nat_route ? toset(["default"]) : toset([])
 
   route_table_id         = aws_route_table.this[0].id
   destination_cidr_block = "0.0.0.0/0"
   nat_gateway_id         = var.nat_gateway_id
+
+  depends_on = [aws_route_table.this]
 }

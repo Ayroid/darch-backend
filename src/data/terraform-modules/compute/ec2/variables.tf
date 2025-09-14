@@ -83,24 +83,31 @@ variable "associate_public_ip_address" {
 variable "root_block_device" {
   description = "Configuration block to customize details about the root block device of the instance"
   type = object({
-    volume_type = optional(string, "gp3")
-    volume_size = optional(number, 8)
-    encrypted   = optional(bool, true)
-    iops        = optional(number)
-    throughput  = optional(number)
+    volume_type           = optional(string, "gp3")
+    volume_size           = optional(number, 8)
+    encrypted             = optional(bool, true)
+    iops                  = optional(number)
+    throughput            = optional(number)
+    delete_on_termination = optional(bool, true)
   })
-  default = {}
+  default = {
+    volume_type           = "gp3"
+    volume_size           = 8
+    encrypted             = true
+    delete_on_termination = true
+  }
 }
 
 variable "ebs_block_device" {
   description = "Additional EBS block devices to attach to the instance"
   type = list(object({
-    device_name = string
-    volume_type = optional(string, "gp3")
-    volume_size = number
-    encrypted   = optional(bool, true)
-    iops        = optional(number)
-    throughput  = optional(number)
+    device_name           = string
+    volume_type           = optional(string, "gp3")
+    volume_size           = number
+    encrypted             = optional(bool, true)
+    iops                  = optional(number)
+    throughput            = optional(number)
+    delete_on_termination = optional(bool, true)
   }))
   default = []
 }

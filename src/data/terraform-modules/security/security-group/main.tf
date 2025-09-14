@@ -32,7 +32,7 @@ resource "aws_security_group_rule" "ingress" {
 }
 
 resource "aws_security_group_rule" "egress" {
-  count = var.create_default_egress_rule ? length(var.egress_rules) : 0
+  count = length(var.egress_rules)
 
   type                     = "egress"
   from_port                = var.egress_rules[count.index].from_port

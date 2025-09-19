@@ -29,6 +29,112 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - TBD
 
+## [2.1.0] - 2025-09-19
+
+### 🚀 **Enhanced Terraform Module Support & Comprehensive Testing**
+
+This release addresses critical gaps in AWS resource support and establishes a robust testing foundation for enterprise-grade reliability.
+
+### Added
+
+#### 🏗️ **New Terraform Modules**
+- **Internet Gateway Module** (`networking/internet-gateway`)
+  - Complete AWS Internet Gateway resource support
+  - Automatic VPC attachment and route table integration
+  - Configurable tags and naming conventions
+  - Optional route creation for public subnets
+- **Route Table Module** (`networking/route-table`)
+  - Comprehensive AWS Route Table management
+  - Support for multiple route types (IGW, NAT, VPC peering, etc.)
+  - Flexible subnet associations
+  - Advanced route prioritization and conflict resolution
+
+#### 🧪 **Comprehensive Unit Test Suite**
+- **ArchitectureParserService Tests** - 15+ test cases covering parsing, validation, edge cases
+- **ModularTerraformGeneratorService Tests** - 12+ test cases for Terraform generation and cross-module references
+- **ValidationUtils Tests** - 20+ test cases for field validation and architecture data validation
+- **ConfigUtils Tests** - 15+ test cases for environment configuration and edge cases
+- **Jest Integration** - Full ES module support with TypeScript compilation
+- **Test Coverage** - Services, utilities, type guards, and integration scenarios
+
+#### 🔍 **Enhanced Resource Type Mappings**
+- Added mappings for `aws-internet-gateway`, `internet-gateway`, `igw` → `networking/internet-gateway`
+- Added mappings for `aws-route-table`, `route-table`, `rt` → `networking/route-table`
+- Enhanced validation for new resource types with required field checking
+- Improved dependency resolution for networking components
+
+### Changed
+
+#### 🔄 **ArchitectureParserService Improvements**
+- **Enhanced Module Mapping** - Expanded resource type recognition and mapping logic
+- **Validation Pipeline** - Added validation for Internet Gateway and Route Table configurations
+- **Dependency Resolution** - Improved automatic dependency detection for networking resources
+- **Required Fields** - Added specific validation for VPC ID requirements in IGW and RT resources
+
+#### 🛠️ **Development Infrastructure**
+- **Jest Configuration** - Updated for ES modules with `ts-jest/presets/default-esm`
+- **TypeScript Integration** - Proper ES module imports and interface compliance
+- **Test Structure** - Organized test files mirroring source code structure
+- **Mock Data Helpers** - Reusable test data creation utilities
+
+### Fixed
+
+#### 🐛 **Critical Resource Mapping Fixes**
+- **Missing Module Mappings** - Fixed `aws-internet-gateway` and `aws-route-table` falling back incorrectly to `compute/ec2`
+- **Validation Failures** - Resolved 400 validation errors for unsupported resource types
+- **Module Path Resolution** - Corrected module path mapping for new networking components
+- **Dependency Chains** - Fixed dependency resolution between VPC → IGW → Route Tables
+
+#### 🔧 **Test Framework Fixes**
+- **Jest ES Module Support** - Resolved "module is not defined" errors with proper Jest configuration
+- **TypeScript Interface Compliance** - Fixed interface mismatches in test data
+- **Import Resolution** - Corrected ES module import paths and extensions
+- **Mock Configuration** - Proper Jest mock setup for console and environment variables
+
+### Security
+
+#### 🔒 **Enhanced Validation**
+- **Input Sanitization** - Strengthened validation for new resource types
+- **Configuration Validation** - Added security checks for networking configurations
+- **Test Security** - Comprehensive test coverage for validation edge cases
+
+### Performance
+
+#### ⚡ **Improved Processing**
+- **Faster Module Resolution** - Optimized lookup for new resource types
+- **Efficient Validation** - Streamlined validation pipeline for complex architectures
+- **Test Performance** - Fast test execution with proper mocking and isolation
+
+### Documentation
+
+#### 📚 **Updated Documentation**
+- **API Documentation** - Updated resource type specifications
+- **Module Documentation** - Complete documentation for new networking modules
+- **Testing Guide** - Comprehensive testing documentation and best practices
+- **Architecture Guide** - Updated architecture diagrams and flow charts
+
+### Migration Guide
+
+#### From v2.0.0 to v2.1.0
+
+1. **No Breaking Changes** - This release is fully backward compatible
+2. **New Resource Types** - `aws-internet-gateway` and `aws-route-table` now properly supported
+3. **Enhanced Validation** - More comprehensive validation with better error messages
+4. **Testing** - New test suite available for development and CI/CD
+
+### Compatibility
+
+- **Terraform**: 1.0+ (all generated modules compatible)
+- **AWS Provider**: 4.0+ (tested with latest provider features)
+- **Node.js**: 18.0+ (ES modules required)
+- **Jest**: 30.0+ (with ts-jest integration)
+
+### Impact
+
+This release resolves critical issues where certain AWS resources were not properly supported, leading to validation failures and incorrect Terraform generation. With the addition of Internet Gateway and Route Table modules, users can now create complete networking architectures without workarounds.
+
+The comprehensive test suite ensures reliability and provides a foundation for continued development and maintenance of the platform.
+
 ## [2.0.0] - 2024-12-21
 
 ### 🚀 **Major Release: Modular Architecture & Enterprise Features**

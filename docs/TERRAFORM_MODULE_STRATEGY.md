@@ -237,13 +237,104 @@ Your platform becomes:
 
 This positions Darch as an **intelligent cloud orchestration platform** rather than just a Terraform wrapper!
 
+## 📦 Recent Module Additions (v2.1.0)
+
+### New Networking Modules
+
+#### Internet Gateway Module (`networking/internet-gateway`)
+**Purpose**: Comprehensive AWS Internet Gateway management with automatic VPC integration
+
+**Key Features:**
+- ✅ Automatic VPC attachment
+- ✅ Optional route table integration for public subnets
+- ✅ Configurable tags and naming conventions
+- ✅ Dependency resolution with VPC resources
+
+**Usage Pattern:**
+```hcl
+module "internet_gateway" {
+  source = "./modules/networking/internet-gateway"
+  
+  vpc_id = module.vpc.vpc_id
+  create_routes = true
+  public_route_table_ids = [module.public_subnet.route_table_id]
+  
+  tags = {
+    Name = "${var.project_name}-igw"
+    Environment = var.environment
+  }
+}
+```
+
+#### Route Table Module (`networking/route-table`)
+**Purpose**: Advanced route table management with support for multiple route types
+
+**Key Features:**
+- ✅ Support for IGW, NAT, VPC peering, and Transit Gateway routes
+- ✅ Flexible subnet associations
+- ✅ Route priority and conflict resolution
+- ✅ Automatic dependency detection
+
+**Usage Pattern:**
+```hcl
+module "route_table" {
+  source = "./modules/networking/route-table"
+  
+  vpc_id = module.vpc.vpc_id
+  
+  routes = [
+    {
+      cidr_block = "0.0.0.0/0"
+      gateway_id = module.internet_gateway.igw_id
+    }
+  ]
+  
+  subnet_associations = [
+    module.public_subnet_1.subnet_id,
+    module.public_subnet_2.subnet_id
+  ]
+}
+```
+
+### Enhanced Resource Type Mappings
+
+**New Mappings Added:**
+- `aws-internet-gateway`, `internet-gateway`, `igw` → `networking/internet-gateway`
+- `aws-route-table`, `route-table`, `rt` → `networking/route-table`
+
+**Validation Improvements:**
+- Enhanced dependency resolution for networking components
+- Required field validation for VPC references
+- Circular dependency detection for complex networking topologies
+
+### Impact on Architecture Generation
+
+These additions resolve critical gaps in AWS networking support:
+
+**Before v2.1.0:**
+- ❌ IGW resources fell back to `compute/ec2` (incorrect)
+- ❌ Route Table resources caused validation failures
+- ❌ Manual workarounds required for complete networking stacks
+
+**After v2.1.0:**
+- ✅ Proper module mapping for all networking resources
+- ✅ Complete VPC → Subnet → IGW → Route Table dependency chains
+- ✅ Automatic validation and configuration suggestion
+
 ## Implementation Priority
 
+### ✅ Completed (v2.1.0)
+- [x] Enhanced networking module support
+- [x] Internet Gateway and Route Table modules
+- [x] Updated resource type mappings
+- [x] Comprehensive unit test suite
+- [x] Enhanced dependency resolution
+
 ### High Priority (Next 2-4 weeks)
-- [ ] Audit existing module usage patterns
-- [ ] Research most relevant official modules for your use cases
-- [ ] Design wrapper module structure
-- [ ] Create proof of concept for VPC wrapper
+- [ ] Audit remaining module usage patterns
+- [ ] Research additional official modules for security and storage
+- [ ] Expand NAT Gateway and VPC Endpoint support
+- [ ] Add Azure and GCP networking modules
 
 ### Medium Priority (2-6 months)
 - [ ] Implement progressive complexity UI components

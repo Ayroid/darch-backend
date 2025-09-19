@@ -755,10 +755,11 @@ The system supports the following resource types with automatic module mapping:
 ### Networking
 | Resource Type | Terraform Module | AWS Resource |
 |---------------|------------------|--------------|
-| `vpc` | `networking/vpc` | `aws_vpc` |
-| `subnet` | `networking/subnet` | `aws_subnet` |
-| `internet-gateway` | `networking/internet-gateway` | `aws_internet_gateway` |
-| `nat-gateway` | `networking/nat-gateway` | `aws_nat_gateway` |
+| `vpc`, `aws-vpc` | `networking/vpc` | `aws_vpc` |
+| `subnet`, `aws-subnet` | `networking/subnet` | `aws_subnet` |
+| `internet-gateway`, `aws-internet-gateway`, `igw` | `networking/internet-gateway` | `aws_internet_gateway` |
+| `route-table`, `aws-route-table`, `rt` | `networking/route-table` | `aws_route_table` |
+| `nat-gateway`, `aws-nat-gateway` | `networking/nat-gateway` | `aws_nat_gateway` |
 
 ### Compute
 | Resource Type | Terraform Module | AWS Resource |

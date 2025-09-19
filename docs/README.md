@@ -4,6 +4,7 @@ A robust TypeScript backend for generating enterprise-grade modular Terraform co
 
 ## 🚀 Features
 
+### Core Capabilities
 - **Modular Terraform Generation**: Convert AWS architecture data to enterprise-grade, modular Terraform configurations
 - **Module Registry System**: Comprehensive library of validated Terraform modules for networking, compute, security, and storage
 - **Architecture Validation**: Advanced validation engine with dependency checking and circular dependency detection
@@ -13,6 +14,13 @@ A robust TypeScript backend for generating enterprise-grade modular Terraform co
 - **File Management**: Generate, organize, and download complete Terraform projects
 - **CLI Support**: Command-line interface for automation and CI/CD integration
 - **Docker Ready**: Fully containerized environment for consistent deployments
+
+### ✨ Latest Enhancements (v2.1.0)
+- **🆕 Enhanced Networking Support**: Complete Internet Gateway and Route Table module support
+- **🧪 Comprehensive Testing**: 60+ unit tests covering services, utilities, and edge cases
+- **🔧 Improved Resource Mapping**: Fixed critical gaps for `aws-internet-gateway` and `aws-route-table` resources
+- **⚡ Enhanced Validation**: Advanced dependency resolution for complex networking topologies
+- **📚 Updated Documentation**: Complete documentation refresh with implementation guides
 
 ## 📋 Table of Contents
 

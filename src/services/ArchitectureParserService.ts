@@ -165,6 +165,12 @@ export class ArchitectureParserService {
       'aws-subnet': 'networking/subnet',
       'aws-private-subnet': 'networking/subnet',
       'aws-public-subnet': 'networking/subnet',
+      'internet-gateway': 'networking/internet-gateway',
+      'aws-internet-gateway': 'networking/internet-gateway',
+      'igw': 'networking/internet-gateway',
+      'route-table': 'networking/route-table',
+      'aws-route-table': 'networking/route-table',
+      'rt': 'networking/route-table',
 
       // Compute
       'ec2': 'compute/ec2',
@@ -261,6 +267,40 @@ export class ArchitectureParserService {
           const vpc = nodes.find(n => n.terraformModule === 'networking/vpc');
           if (vpc && !node.dependencies.includes(vpc.id)) {
             node.dependencies.push(vpc.id);
+          }
+          break;
+
+        case 'networking/internet-gateway':
+          // Internet Gateway depends on VPC
+          const igwVpc = nodes.find(n => n.terraformModule === 'networking/vpc');
+          if (igwVpc && !node.dependencies.includes(igwVpc.id)) {
+            node.dependencies.push(igwVpc.id);
+          }
+          break;
+
+        case 'networking/route-table':
+          // Route Table depends on VPC
+          const rtVpc = nodes.find(n => n.terraformModule === 'networking/vpc');
+          if (rtVpc && !node.dependencies.includes(rtVpc.id)) {
+            node.dependencies.push(rtVpc.id);
+          }
+          
+          // If route table has routes to Internet Gateway, add dependency
+          if (node.configuration.routes) {
+            const routes = node.configuration.routes;
+            if (typeof routes === 'object') {
+              Object.values(routes).forEach((route: any) => {
+                if (route.gateway_id) {
+                  const igw = nodes.find(n => 
+                    n.terraformModule === 'networking/internet-gateway' && 
+                    (n.configuration.name === route.gateway_id || n.id === route.gateway_id)
+                  );
+                  if (igw && !node.dependencies.includes(igw.id)) {
+                    node.dependencies.push(igw.id);
+                  }
+                }
+              });
+            }
           }
           break;
 
@@ -370,6 +410,8 @@ export class ArchitectureParserService {
     const requiredFieldsMap: Record<string, string[]> = {
       'networking/vpc': ['cidr_block'],
       'networking/subnet': ['cidr_block', 'availability_zone'],
+      'networking/internet-gateway': ['vpc_id'],
+      'networking/route-table': ['vpc_id'],
       'compute/ec2': ['instance_type'],
       'security/security-group': ['name'],
       'storage/s3': ['bucket_name']

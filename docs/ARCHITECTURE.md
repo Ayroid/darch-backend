@@ -18,6 +18,23 @@ This document provides a detailed overview of the Darch Backend modular Terrafor
 
 The Darch Backend is designed as an enterprise-grade, scalable TypeScript application that transforms AWS architecture diagrams into production-ready, modular Terraform configurations. It features a comprehensive module registry system, automatic dependency resolution, and advanced validation capabilities.
 
+### Recent Architecture Enhancements (v2.1.0)
+
+**Enhanced Module Support:**
+- ✅ Complete networking module coverage with Internet Gateway and Route Table support
+- ✅ Improved resource type mapping with multi-alias support (`aws-internet-gateway`, `internet-gateway`, `igw`)
+- ✅ Advanced dependency resolution for complex networking topologies
+
+**Testing Infrastructure:**
+- ✅ Comprehensive Jest-based unit testing framework with ES module support
+- ✅ 60+ test cases covering services, utilities, and edge scenarios
+- ✅ Type-safe mock data generation and validation testing
+
+**Validation Pipeline:**
+- ✅ Enhanced architecture validation with better error reporting
+- ✅ Circular dependency detection for networking resources
+- ✅ Improved security rule validation with best practice recommendations
+
 ## Modular Architecture Pattern
 
 ### Service-Oriented Architecture with Module Registry

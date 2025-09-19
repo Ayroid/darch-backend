@@ -717,73 +717,164 @@ static async generateTerraformFile(
 
 ## Testing
 
-### Unit Testing Setup (Recommended)
+### Comprehensive Unit Testing Suite ✅
 
-Install testing dependencies:
-```bash
-npm install --save-dev jest @types/jest ts-jest supertest @types/supertest
-```
+The project includes a robust Jest-based unit testing framework with TypeScript and ES module support.
 
-Create `jest.config.js`:
+#### Testing Framework Setup
+
+**Current Configuration:**
+- ✅ Jest 30.0+ with ES module support
+- ✅ TypeScript integration with `ts-jest/presets/default-esm`
+- ✅ Comprehensive test coverage for services and utilities
+- ✅ Mock setup for console and environment variables
+- ✅ Organized test structure mirroring source code
+
+**Jest Configuration** (`jest.config.js`):
 ```javascript
-module.exports = {
-  preset: 'ts-jest',
+export default {
+  preset: 'ts-jest/presets/default-esm',
+  extensionsToTreatAsEsm: ['.ts'],
   testEnvironment: 'node',
-  roots: ['<rootDir>/src', '<rootDir>/test'],
-  testMatch: ['**/__tests__/**/*.ts', '**/?(*.)+(spec|test).ts'],
+  roots: ['<rootDir>/src', '<rootDir>/tests'],
+  testMatch: [
+    '**/__tests__/**/*.+(ts|tsx|js)',
+    '**/*.(test|spec).+(ts|tsx|js)'
+  ],
+  transform: {
+    '^.+\\.(ts|tsx)$': ['ts-jest', {
+      useESM: true
+    }],
+  },
   collectCoverageFrom: [
-    'src/**/*.ts',
+    'src/**/*.{ts,tsx}',
     '!src/**/*.d.ts',
-    '!src/index.ts'
-  ]
+    '!src/index.ts',
+    '!src/exports.ts',
+    '!src/data/**',
+    '!src/output/**'
+  ],
+  coverageDirectory: 'coverage',
+  coverageReporters: ['text', 'lcov', 'html'],
+  setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
+  testTimeout: 10000,
+  verbose: true
 };
 ```
 
-### Test Examples
+#### Running Tests
 
-#### 1. Service Testing
+```bash
+# Run all tests
+npm test
+
+# Run specific test suites
+npm test -- --testPathPatterns=architecture-parser.service.test.ts
+npm test -- --testPathPatterns=modular-terraform-generator.service.test.ts
+npm test -- --testPathPatterns=validation-utils.test.ts
+npm test -- --testPathPatterns=config-utils.test.ts
+
+# Run tests with coverage
+npm run test:coverage
+
+# Watch mode for development
+npm run test:watch
+
+# Run tests for specific service
+npx jest tests/unit/services/architecture-parser.service.test.ts --verbose
+```
+
+### Current Test Suites
+
+#### 1. ArchitectureParserService Tests
+**File:** `tests/unit/services/architecture-parser.service.test.ts`
+
+**Coverage:**
+- ✅ Resource type mapping (including new IGW and Route Table mappings)
+- ✅ Architecture parsing with validation and defaults
+- ✅ CIDR validation and security warnings
+- ✅ Circular dependency detection
+- ✅ Edge cases and error handling
+
 ```typescript
-// test/services/TerraformConfigService.test.ts
-import { TerraformConfigService } from '../../src/services/TerraformConfigService';
-import { ArchitectureData } from '../../src/models/Architecture';
+// Example test for new resource mappings
+describe('mapResourceTypeToModule', () => {
+  it('should map new resource types correctly', () => {
+    const testCases = [
+      { resourceType: 'aws-internet-gateway', expected: 'networking/internet-gateway' },
+      { resourceType: 'internet-gateway', expected: 'networking/internet-gateway' },
+      { resourceType: 'igw', expected: 'networking/internet-gateway' },
+      { resourceType: 'aws-route-table', expected: 'networking/route-table' },
+      { resourceType: 'route-table', expected: 'networking/route-table' },
+      { resourceType: 'rt', expected: 'networking/route-table' }
+    ];
 
-describe('TerraformConfigService', () => {
-  const mockArchitectureData: ArchitectureData = {
-    metadata: {
-      name: 'test-architecture',
-      version: '1.0.0',
-      createdAt: '2025-09-07T10:00:00.000Z',
-      lastModified: '2025-09-07T10:00:00.000Z',
-      provider: 'aws'
-    },
-    nodes: [
-      {
-        id: 'test-node',
-        nodeType: 'awsService',
-        resourceType: 'ec2',
-        name: 'test-instance',
-        icon: 'ec2',
-        position: { x: 0, y: 0 },
-        configuration: {
-          ami: 'ami-12345',
-          instance_type: 't3.micro'
+    for (const testCase of testCases) {
+      const architectureData = createArchitectureData([
+        {
+          id: 'test-node',
+          resourceType: testCase.resourceType,
+          name: 'test',
+          icon: 'test',
+          configuration: {}
         }
-      }
-    ],
-    connections: []
-  };
+      ]);
 
-  it('should convert architecture data to terraform config', () => {
-    const result = TerraformConfigService.convertArchitectureDataToTerraformConfig(
-      mockArchitectureData
-    );
-
-    expect(result).toHaveProperty('provider.aws');
-    expect(result).toHaveProperty('resources.aws_instance');
-    expect(result.resources.aws_instance).toHaveProperty('test_instance');
+      const result = ArchitectureParserService.parseArchitecture(architectureData);
+      expect(result.nodes[0].terraformModule).toBe(testCase.expected);
+    }
   });
 });
 ```
+
+#### 2. ModularTerraformGeneratorService Tests
+**File:** `tests/unit/services/modular-terraform-generator.service.test.ts`
+
+**Coverage:**
+- ✅ Complete Terraform configuration generation
+- ✅ Cross-module references and dependencies
+- ✅ Terraform syntax validation
+- ✅ Multi-provider support
+- ✅ Complex variable types and edge cases
+
+```typescript
+// Example test for Terraform generation
+describe('generateTerraformConfiguration', () => {
+  it('should generate complete Terraform configuration', () => {
+    const result = ModularTerraformGeneratorService.generateTerraformConfiguration(
+      mockMappingResult,
+      mockMetadata,
+      'test-infrastructure'
+    );
+
+    expect(result).toBeDefined();
+    expect(result.mainTf).toBeDefined();
+    expect(result.variablesTf).toBeDefined();
+    expect(result.outputsTf).toBeDefined();
+    expect(result.terraformTfvars).toBeDefined();
+    expect(result.providersVersionsTf).toBeDefined();
+    expect(result.files).toHaveLength(5);
+  });
+});
+```
+
+#### 3. ValidationUtils Tests  
+**File:** `tests/unit/utils/validation-utils.test.ts`
+
+**Coverage:**
+- ✅ Required field validation with comprehensive edge cases
+- ✅ Architecture data structure validation
+- ✅ Type safety and error handling
+- ✅ Multiple validation error accumulation
+
+#### 4. ConfigUtils Tests
+**File:** `tests/unit/utils/config-utils.test.ts`
+
+**Coverage:**
+- ✅ Environment variable parsing and defaults
+- ✅ Configuration value handling (port, NODE_ENV, CORS)
+- ✅ Edge cases and type conversions
+- ✅ Multiple configuration combinations
 
 #### 2. API Testing
 ```typescript

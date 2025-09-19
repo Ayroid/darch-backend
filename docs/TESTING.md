@@ -1,16 +1,53 @@
 # Testing Guide
 
-This document describes the testing approach and available test scripts for the Darch Backend.
+This document describes the comprehensive testing approach for the Darch Backend, including unit tests, integration tests, and manual testing procedures.
 
 ## 🧪 Testing Overview
 
-The Darch Backend includes comprehensive testing capabilities:
+The Darch Backend includes multiple layers of testing for enterprise-grade reliability:
 
+- **Unit Testing**: Jest-based unit tests for services, utilities, and components
+- **Integration Testing**: End-to-end workflow validation
 - **Manual API Testing**: Direct HTTP requests to test endpoints
 - **Automated Test Scripts**: Shell scripts for comprehensive testing
 - **Docker Testing**: Containerized testing environment
 - **Terraform Validation**: Syntax and format validation
-- **Integration Testing**: End-to-end workflow validation
+
+## 🚀 Quick Testing
+
+### Run All Unit Tests
+
+```bash
+npm test
+```
+
+### Run Specific Test Suites
+
+```bash
+# Architecture Parser Service tests
+npm test -- --testPathPatterns=architecture-parser.service.test.ts
+
+# Terraform Generator Service tests
+npm test -- --testPathPatterns=modular-terraform-generator.service.test.ts
+
+# Validation Utils tests
+npm test -- --testPathPatterns=validation-utils.test.ts
+
+# Config Utils tests
+npm test -- --testPathPatterns=config-utils.test.ts
+```
+
+### Run Tests with Coverage
+
+```bash
+npm run test:coverage
+```
+
+### Watch Mode for Development
+
+```bash
+npm run test:watch
+```
 
 ## 🚀 Quick Testing
 
@@ -64,7 +101,63 @@ chmod +x test-modular.sh
 - Dependency validation
 - Error handling scenarios
 
-### 2. Terraform Syntax Validation
+### 2. Unit Test Suites
+
+**Framework**: Jest with TypeScript support
+
+Our comprehensive unit test suite covers:
+
+#### ArchitectureParserService Tests (`tests/unit/services/architecture-parser.service.test.ts`)
+
+- ✅ **Resource Type Mapping** - Tests for new IGW and Route Table mappings
+- ✅ **Architecture Parsing** - Validation, defaults, and dependency resolution
+- ✅ **Validation Pipeline** - CIDR validation, security warnings, circular dependency detection
+- ✅ **Edge Cases** - Empty data, malformed nodes, invalid connections
+- ✅ **Error Handling** - Graceful handling of unsupported resources
+
+```bash
+# Run specific test suite
+npx jest tests/unit/services/architecture-parser.service.test.ts --verbose
+```
+
+#### ModularTerraformGeneratorService Tests (`tests/unit/services/modular-terraform-generator.service.test.ts`)
+
+- ✅ **Terraform Generation** - Main.tf, variables.tf, outputs.tf, tfvars generation
+- ✅ **Cross-Module References** - VPC dependencies, module output references
+- ✅ **Syntax Validation** - Terraform syntax checking and error detection
+- ✅ **Multi-Provider Support** - AWS, Azure, GCP provider configurations
+- ✅ **Complex Scenarios** - Nested modules, complex variable types
+
+```bash
+# Run Terraform generator tests
+npx jest tests/unit/services/modular-terraform-generator.service.test.ts --verbose
+```
+
+#### ValidationUtils Tests (`tests/unit/utils/validation-utils.test.ts`)
+
+- ✅ **Field Validation** - Required field checking with comprehensive edge cases
+- ✅ **Architecture Validation** - Complete architecture data structure validation
+- ✅ **Type Safety** - Null/undefined handling, prototype properties
+- ✅ **Error Accumulation** - Multiple validation error collection and reporting
+
+```bash
+# Run validation utility tests
+npx jest tests/unit/utils/validation-utils.test.ts --verbose
+```
+
+#### ConfigUtils Tests (`tests/unit/utils/config-utils.test.ts`)
+
+- ✅ **Environment Variables** - Environment variable parsing and defaults
+- ✅ **Configuration Values** - Port, NODE_ENV, CORS origin handling
+- ✅ **Edge Cases** - Invalid values, special characters, type conversions
+- ✅ **Integration Scenarios** - Multiple configuration combinations
+
+```bash
+# Run configuration utility tests
+npx jest tests/unit/utils/config-utils.test.ts --verbose
+```
+
+### 3. Terraform Syntax Validation
 
 **File**: `test/validate-terraform-syntax.sh`
 

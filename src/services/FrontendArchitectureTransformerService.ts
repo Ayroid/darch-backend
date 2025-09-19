@@ -480,6 +480,8 @@ export class FrontendArchitectureTransformerService {
       'aws-subnet': { backend: 'subnet', nodeType: 'awsService' },
       'aws-ec2': { backend: 'ec2', nodeType: 'awsService' },
       'aws-security-group': { backend: 'security-group', nodeType: 'awsService' },
+      'aws-internet-gateway': { backend: 'internet-gateway', nodeType: 'awsService' },
+      'aws-route-table': { backend: 'route-table', nodeType: 'awsService' },
       'aws-s3': { backend: 's3', nodeType: 'awsService' },
       'aws-rds': { backend: 'rds', nodeType: 'awsService' },
 
@@ -488,6 +490,8 @@ export class FrontendArchitectureTransformerService {
       'subnet': { backend: 'subnet', nodeType: 'awsService' },
       'ec2': { backend: 'ec2', nodeType: 'awsService' },
       'security-group': { backend: 'security-group', nodeType: 'awsService' },
+      'internet-gateway': { backend: 'internet-gateway', nodeType: 'awsService' },
+      'route-table': { backend: 'route-table', nodeType: 'awsService' },
       's3': { backend: 's3', nodeType: 'awsService' },
       'rds': { backend: 'rds', nodeType: 'awsService' }
     };
@@ -553,6 +557,12 @@ export class FrontendArchitectureTransformerService {
         break;
       case 'aws-security-group':
         this.transformSecurityGroupConfiguration(config, transformations);
+        break;
+      case 'aws-internet-gateway':
+        this.transformInternetGatewayConfiguration(config, frontendNode, containerMapping, transformations);
+        break;
+      case 'aws-route-table':
+        this.transformRouteTableConfiguration(config, frontendNode, containerMapping, transformations);
         break;
       case 'aws-s3':
         this.transformS3Configuration(config, transformations);
@@ -824,6 +834,99 @@ export class FrontendArchitectureTransformerService {
       config.bucket_name = config.bucketName;
       delete config.bucketName;
       transformations.push('bucketName → bucket_name');
+    }
+  }
+
+  /**
+   * Transform Internet Gateway configuration
+   */
+  private static transformInternetGatewayConfiguration(
+    config: Record<string, any>,
+    frontendNode: FrontendNode,
+    containerMapping: Map<string, FrontendNode>,
+    transformations: string[]
+  ): void {
+    // Find VPC reference from parent containers or configuration
+    if (!config.vpc_id) {
+      if (config.awsVpcId) {
+        config.vpc_id = config.awsVpcId;
+        transformations.push(`Added VPC reference from awsVpcId: ${config.awsVpcId}`);
+      } else if (frontendNode.parentId) {
+        const vpc = this.findVpcForNode(frontendNode, containerMapping);
+        if (vpc) {
+          config.vpc_id = vpc.id;
+          transformations.push(`Added VPC reference from parent: ${vpc.id}`);
+        }
+      }
+    }
+
+    // Set default create_default_route_to_internet if not specified
+    if (config.createDefaultRoute === undefined && config.create_default_route_to_internet === undefined) {
+      config.create_default_route_to_internet = true;
+      transformations.push('Added default create_default_route_to_internet: true');
+    } else if (config.createDefaultRoute !== undefined && config.create_default_route_to_internet === undefined) {
+      config.create_default_route_to_internet = config.createDefaultRoute;
+      delete config.createDefaultRoute;
+      transformations.push('createDefaultRoute → create_default_route_to_internet');
+    }
+  }
+
+  /**
+   * Transform Route Table configuration
+   */
+  private static transformRouteTableConfiguration(
+    config: Record<string, any>,
+    frontendNode: FrontendNode,
+    containerMapping: Map<string, FrontendNode>,
+    transformations: string[]
+  ): void {
+    // Find VPC reference from parent containers or configuration
+    if (!config.vpc_id) {
+      if (config.awsVpcId) {
+        config.vpc_id = config.awsVpcId;
+        transformations.push(`Added VPC reference from awsVpcId: ${config.awsVpcId}`);
+      } else if (frontendNode.parentId) {
+        const vpc = this.findVpcForNode(frontendNode, containerMapping);
+        if (vpc) {
+          config.vpc_id = vpc.id;
+          transformations.push(`Added VPC reference from parent: ${vpc.id}`);
+        }
+      }
+    }
+
+    // Transform routes configuration
+    if (config.routes && typeof config.routes === 'object') {
+      const transformedRoutes: any[] = [];
+      
+      Object.entries(config.routes).forEach(([routeName, routeConfig]: [string, any]) => {
+        const transformedRoute: any = {
+          route_name: routeName,
+          destination_cidr_block: routeConfig.destination_cidr_block || routeConfig.destinationCidrBlock || '0.0.0.0/0'
+        };
+
+        // Handle different route targets
+        if (routeConfig.gateway_id || routeConfig.gatewayId) {
+          transformedRoute.gateway_id = routeConfig.gateway_id || routeConfig.gatewayId;
+        } else if (routeConfig.nat_gateway_id || routeConfig.natGatewayId) {
+          transformedRoute.nat_gateway_id = routeConfig.nat_gateway_id || routeConfig.natGatewayId;
+        } else if (routeConfig.vpc_peering_connection_id || routeConfig.vpcPeeringConnectionId) {
+          transformedRoute.vpc_peering_connection_id = routeConfig.vpc_peering_connection_id || routeConfig.vpcPeeringConnectionId;
+        }
+
+        transformedRoutes.push(transformedRoute);
+      });
+
+      config.routes = transformedRoutes;
+      transformations.push('Transformed routes object to array format');
+    }
+
+    // Transform subnet associations
+    if (config.subnetAssociations && Array.isArray(config.subnetAssociations)) {
+      config.subnet_associations = config.subnetAssociations;
+      delete config.subnetAssociations;
+      transformations.push('subnetAssociations → subnet_associations');
+    } else if (!config.subnet_associations) {
+      config.subnet_associations = [];
     }
   }
 

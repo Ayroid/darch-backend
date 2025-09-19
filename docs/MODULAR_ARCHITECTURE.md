@@ -355,4 +355,29 @@ module "web_server_ec2_1" {
 - Module marketplace
 - CI/CD pipeline integration
 
+## 🔄 Frontend Architecture Transformation
+
+The `FrontendArchitectureTransformerService` provides seamless conversion between frontend and backend architecture formats:
+
+### Resource Type Mapping
+- **Frontend**: `aws-internet-gateway` → **Backend**: `internet-gateway`
+- **Frontend**: `aws-route-table` → **Backend**: `route-table`
+- **Frontend**: `aws-vpc` → **Backend**: `vpc`
+- **Frontend**: `aws-subnet` → **Backend**: `subnet`
+
+### Configuration Transformation
+```typescript
+// Automatic field mapping: awsVpcId → vpc_id
+// Automatic field mapping: createDefaultRoute → create_default_route_to_internet
+// VPC reference resolution from parent containers
+// Route configuration transformation from object to array format
+```
+
+### Key Features
+- **Automatic VPC Reference Detection**: Finds VPC IDs from parent containers or configuration
+- **Field Name Conversion**: Transforms camelCase to snake_case automatically  
+- **Route Configuration Normalization**: Converts frontend route objects to Terraform-ready arrays
+- **Subnet Association Mapping**: Maps frontend subnet associations to backend format
+- **Validation Support**: Works with ArchitectureParserService for comprehensive validation
+
 This transformation makes Darch Backend a production-ready, enterprise-grade infrastructure-as-code generator! 🚀

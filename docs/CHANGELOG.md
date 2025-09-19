@@ -29,6 +29,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - TBD
 
+## [2.1.1] - 2025-09-19
+
+### Fixed
+- **CRITICAL**: Fixed FrontendArchitectureTransformerService missing resource type mappings
+  - Added support for `aws-internet-gateway` and `aws-route-table` resource types
+  - Added transformation methods for Internet Gateway and Route Table configurations
+  - Resolved issue where IGW/RT resources were falling back to unknown resource type handling
+- Enhanced frontend-to-backend resource mapping with proper vpc_id handling
+- Improved configuration transformation for networking resources with VPC references
+
+### Added
+- Internet Gateway configuration transformation with VPC reference detection
+- Route Table configuration transformation with route and subnet association handling
+- Enhanced resource type mapping coverage for all networking components
+- Automatic VPC reference resolution from frontend configuration or parent containers
+
 ## [2.1.0] - 2025-09-19
 
 ### 🚀 **Enhanced Terraform Module Support & Comprehensive Testing**

@@ -440,6 +440,59 @@ curl -o project.zip http://localhost:5000/api/projects/test-2025-09-13T08-01-11-
 - Includes all required files
 - Ready for terraform commands
 
+## Frontend Resource Type Mappings
+
+The backend automatically transforms frontend resource types to backend format via `FrontendArchitectureTransformerService`:
+
+### Supported Resource Types
+
+| Frontend Resource Type | Backend Type | Terraform Module |
+|----------------------|--------------|------------------|
+| `aws-vpc` | `vpc` | `networking/vpc` |
+| `aws-public-subnet` | `subnet` | `networking/subnet` |
+| `aws-private-subnet` | `subnet` | `networking/subnet` |
+| `aws-ec2` | `ec2` | `compute/ec2` |
+| `aws-security-group` | `security-group` | `security/security-group` |
+| `aws-internet-gateway` | `internet-gateway` | `networking/internet-gateway` |
+| `aws-route-table` | `route-table` | `networking/route-table` |
+| `aws-s3` | `s3` | `storage/s3` |
+
+### Configuration Transformation
+
+Frontend configurations are automatically transformed:
+
+```typescript
+// Frontend format
+{
+  "resourceType": "aws-internet-gateway",
+  "configuration": {
+    "awsVpcId": "main-vpc",
+    "createDefaultRoute": true
+  }
+}
+
+// Backend format (auto-transformed)
+{
+  "resourceType": "internet-gateway", 
+  "configuration": {
+    "vpc_id": "main-vpc",
+    "create_default_route_to_internet": true
+  }
+}
+```
+
+### Required Fields by Resource Type
+
+| Resource Type | Required Fields |
+|---------------|----------------|
+| `aws-vpc` | `cidrBlock` |
+| `aws-subnet` | `cidrBlock`, `awsAvailabilityZone` |
+| `aws-internet-gateway` | `awsVpcId` |
+| `aws-route-table` | `awsVpcId` |
+| `aws-ec2` | `instanceType` |
+| `aws-security-group` | `name` |
+| `aws-s3` | `bucketName` |
+
 ## Error Handling
 
 ```typescript

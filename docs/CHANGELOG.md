@@ -8,6 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Enhanced FrontendArchitectureTransformerService with Internet Gateway and Route Table support
+- Frontend configuration interfaces for InternetGatewayConfiguration and RouteTableConfiguration
+- Improved parent-child relationship resolution for AWS resources
+- Better VPC reference mapping for networking resources
+
+### Changed
+- Updated FrontendArchitectureTransformerService to handle aws-internet-gateway and aws-route-table resource types
+- Improved dependency graph building to prevent circular dependencies from improper parent relationships
+- Enhanced resource type mapping in frontend transformation logic
+
+### Fixed
+- **CRITICAL**: Fixed Internet Gateway vpc_id mapping issue causing 400 validation errors
+- Resolved circular dependency errors in architecture parsing for networking resources
+- Fixed parent resolution logic for resources within regions (Internet Gateway → VPC relationship)
+- Corrected frontend field cleanup timing to preserve required mapping fields during transformation
+
+## [Previous Releases]
+
+### Added
 - Planned: Enhanced multi-cloud provider support (GCP, Azure advanced features)
 - Planned: Real-time architecture validation and suggestions
 - Planned: Cost estimation and optimization recommendations
@@ -21,9 +40,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TBD
 
 ### Removed
-- TBD
-
-### Fixed
 - TBD
 
 ### Security

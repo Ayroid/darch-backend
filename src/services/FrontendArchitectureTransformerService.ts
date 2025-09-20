@@ -155,6 +155,27 @@ export interface FrontendSecurityGroupRule {
   description?: string;
 }
 
+export interface FrontendInternetGatewayConfiguration {
+  awsInternetGatewayId: string;
+  awsVpcId?: string;
+  description?: string;
+  state?: "available" | "attaching" | "attached" | "detaching" | "detached";
+  tags?: Record<string, string>;
+}
+
+export interface FrontendRouteTableConfiguration {
+  awsRouteTableId?: string;
+  awsVpcId?: string;
+  routes?: Record<string, {
+    destinationCidrBlock?: string;
+    gatewayId?: string;
+    natGatewayId?: string;
+    vpcPeeringConnectionId?: string;
+  }>;
+  subnetAssociations?: string[];
+  tags?: Record<string, string>;
+}
+
 export type FrontendAWSResourceConfiguration =
   | FrontendVPCConfiguration
   | FrontendEC2Configuration
@@ -163,6 +184,8 @@ export type FrontendAWSResourceConfiguration =
   | FrontendAWSRegionConfiguration
   | FrontendAvailabilityZoneConfiguration
   | FrontendSecurityGroupConfiguration
+  | FrontendInternetGatewayConfiguration
+  | FrontendRouteTableConfiguration
   | Record<string, any>;
 
 export interface TransformationResult {
@@ -345,37 +368,21 @@ export class FrontendArchitectureTransformerService {
         let parentId = frontendNode.parentId;
         let actualParent = undefined;
 
-        // If the node has a parent, check if we need to find the VPC or other logical parent
+        // Set parentId only for resources that truly need parent-child relationships
+        // For most AWS resources, explicit configuration (vpc_id, subnet_id) is preferred over parent-child
         if (parentId && containerMapping.has(parentId)) {
           const parentContainer = containerMapping.get(parentId)!;
 
-          // If parent is a subnet, find the VPC
-          if (parentContainer.resourceType.includes('subnet')) {
-            const vpc = containerNodes.find(n =>
-              n.resourceType.includes('vpc') &&
-              this.isNodeInContainer(parentContainer, n)
-            );
-            if (vpc) {
-              actualParent = vpc.id;
-              transformations.push(`Parent changed from ${parentContainer.resourceType} to VPC`);
-            }
-          }
-          // If parent is availability zone, find the VPC
-          else if (parentContainer.resourceType.includes('availability-zone')) {
-            const vpc = containerNodes.find(n =>
-              n.resourceType.includes('vpc') &&
-              this.isNodeInContainer(parentContainer, n)
-            );
-            if (vpc) {
-              actualParent = vpc.id;
-              transformations.push(`Parent changed from availability zone to VPC`);
-            }
-          }
-          // If parent is already a VPC or other logical container, keep it
-          else if (parentContainer.resourceType.includes('vpc') ||
-                   parentContainer.resourceType.includes('security')) {
+          // Only set parent relationships for resources that benefit from containment
+          // Most AWS resources will use explicit vpc_id, subnet_id references instead
+          if (parentContainer.resourceType.includes('subnet') &&
+              frontendNode.resourceType === 'aws-ec2') {
+            // EC2 instances can have subnet as parent for visual hierarchy
             actualParent = parentId;
+            transformations.push(`Kept subnet parent for EC2 instance`);
           }
+          // For other resources, avoid parent-child to prevent circular dependencies
+          // They will use explicit configuration fields instead (vpc_id, etc.)
         }
 
         const transformedNode: ArchitectureNode = {
@@ -533,17 +540,7 @@ export class FrontendArchitectureTransformerService {
       transformations.push('awsAvailabilityZone → availability_zone');
     }
 
-    // Remove frontend-specific configuration properties safely
-    if ('awsRegionId' in config) delete config.awsRegionId;
-    if ('awsAvailabilityZone' in config) delete config.awsAvailabilityZone;
-    if ('awsVpcId' in config) delete config.awsVpcId;
-    if ('awsPublicSubnetId' in config) delete config.awsPublicSubnetId;
-    if ('awsPrivateSubnetId' in config) delete config.awsPrivateSubnetId;
-    if ('awsEc2Id' in config) delete config.awsEc2Id;
-    if ('awsSecurityGroupId' in config) delete config.awsSecurityGroupId;
-    if ('awsAvailabilityZoneId' in config) delete config.awsAvailabilityZoneId;
-
-    // Transform specific configuration based on resource type
+    // Transform specific configuration based on resource type (BEFORE removing frontend fields)
     switch (frontendNode.resourceType) {
       case 'aws-vpc':
         this.transformVpcConfiguration(config, transformations);
@@ -568,6 +565,16 @@ export class FrontendArchitectureTransformerService {
         this.transformS3Configuration(config, transformations);
         break;
     }
+
+    // Clean up remaining frontend-specific configuration properties AFTER transformations
+    if ('awsRegionId' in config) delete config.awsRegionId;
+    if ('awsAvailabilityZone' in config) delete config.awsAvailabilityZone;
+    if ('awsPublicSubnetId' in config) delete config.awsPublicSubnetId;
+    if ('awsPrivateSubnetId' in config) delete config.awsPrivateSubnetId;
+    if ('awsEc2Id' in config) delete config.awsEc2Id;
+    if ('awsSecurityGroupId' in config) delete config.awsSecurityGroupId;
+    if ('awsAvailabilityZoneId' in config) delete config.awsAvailabilityZoneId;
+    // Note: awsVpcId and awsInternetGatewayId are cleaned up by individual transformation methods
 
     // Ensure tags exist
     if (!config.tags) {
@@ -656,17 +663,19 @@ export class FrontendArchitectureTransformerService {
 
     // Find VPC reference from parent containers or configuration
     if (!config.vpc_id) {
-      // First try to find from awsVpcId in config
-      if (config.awsVpcId) {
-        config.vpc_id = config.awsVpcId;
-        transformations.push(`Added VPC reference from awsVpcId: ${config.awsVpcId}`);
-      } else if (frontendNode.parentId) {
-        // Then try to find VPC from parent chain
+      // First try to find actual VPC from parent chain (more reliable than awsVpcId)
+      if (frontendNode.parentId) {
         const vpc = this.findVpcForNode(frontendNode, containerMapping);
         if (vpc) {
           config.vpc_id = vpc.id;
           transformations.push(`Added VPC reference from parent: ${vpc.id}`);
         }
+      }
+
+      // Fallback to awsVpcId only if no VPC found from parents
+      if (!config.vpc_id && config.awsVpcId && config.awsVpcId !== "default-vpc") {
+        config.vpc_id = config.awsVpcId;
+        transformations.push(`Added VPC reference from awsVpcId: ${config.awsVpcId}`);
       }
     }
 
@@ -846,19 +855,47 @@ export class FrontendArchitectureTransformerService {
     containerMapping: Map<string, FrontendNode>,
     transformations: string[]
   ): void {
+    // Map awsInternetGatewayId to name if needed
+    if (config.awsInternetGatewayId && !config.name) {
+      config.name = config.awsInternetGatewayId;
+      transformations.push('awsInternetGatewayId → name');
+    }
+
     // Find VPC reference from parent containers or configuration
     if (!config.vpc_id) {
-      if (config.awsVpcId) {
+      // First check for explicit awsVpcId in config
+      if (config.awsVpcId && config.awsVpcId !== "default-vpc") {
         config.vpc_id = config.awsVpcId;
         transformations.push(`Added VPC reference from awsVpcId: ${config.awsVpcId}`);
       } else if (frontendNode.parentId) {
-        const vpc = this.findVpcForNode(frontendNode, containerMapping);
+        // Try to find VPC from parent chain
+        let currentParent: string | undefined = frontendNode.parentId;
+        let vpc: FrontendNode | undefined;
+
+        // Walk up the parent chain to find VPC
+        while (currentParent && !vpc) {
+          const parent = containerMapping.get(currentParent);
+          if (parent) {
+            if (parent.resourceType === 'aws-vpc') {
+              vpc = parent;
+            } else {
+              currentParent = parent.parentId;
+            }
+          } else {
+            break;
+          }
+        }
+
         if (vpc) {
           config.vpc_id = vpc.id;
-          transformations.push(`Added VPC reference from parent: ${vpc.id}`);
+          transformations.push(`Added VPC reference from parent chain: ${vpc.id}`);
         }
       }
     }
+
+    // Remove frontend-specific fields
+    if (config.awsInternetGatewayId) delete config.awsInternetGatewayId;
+    if (config.awsVpcId) delete config.awsVpcId;
 
     // Set default create_default_route_to_internet if not specified
     if (config.createDefaultRoute === undefined && config.create_default_route_to_internet === undefined) {
@@ -868,6 +905,15 @@ export class FrontendArchitectureTransformerService {
       config.create_default_route_to_internet = config.createDefaultRoute;
       delete config.createDefaultRoute;
       transformations.push('createDefaultRoute → create_default_route_to_internet');
+    }
+
+    // Handle description and state fields
+    if (config.description) {
+      transformations.push('Preserved description field');
+    }
+
+    if (config.state) {
+      transformations.push(`Preserved state: ${config.state}`);
     }
   }
 
@@ -897,7 +943,7 @@ export class FrontendArchitectureTransformerService {
     // Transform routes configuration
     if (config.routes && typeof config.routes === 'object') {
       const transformedRoutes: any[] = [];
-      
+
       Object.entries(config.routes).forEach(([routeName, routeConfig]: [string, any]) => {
         const transformedRoute: any = {
           route_name: routeName,

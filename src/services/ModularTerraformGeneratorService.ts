@@ -185,11 +185,11 @@ locals {
    * Resolve cross-module references for variables with null values
    */
   private static resolveCrossModuleReference(
-    variableName: string, 
-    currentModule: GeneratedModule, 
-    allModules: GeneratedModule[], 
+    variableName: string,
+    currentModule: GeneratedModule,
+    allModules: GeneratedModule[],
     nodes: any[]
-  ): string | null {
+  ): string | string[] | null {
     // Find the current node that corresponds to this module
     const currentNode = nodes.find(node => {
       const moduleName = this.generateModuleName(node);
@@ -208,36 +208,99 @@ locals {
           const vpcModuleName = this.generateModuleName(vpcNode);
           return `module.${vpcModuleName}.vpc_id`;
         }
-        break;
-
-      case 'internet_gateway_id':
-        // For public subnets, find the VPC's internet gateway
-        if (currentNode.resourceType === 'aws-public-subnet') {
-          const vpcNode = this.findVpcForNode(currentNode, nodes);
-          if (vpcNode) {
-            const vpcModuleName = this.generateModuleName(vpcNode);
-            return `module.${vpcModuleName}.internet_gateway_id`;
+        // If no VPC found in hierarchy, try to find by ID from configuration
+        const vpcId = currentNode.configuration?.vpc_id || currentNode.configuration?.awsVpcId;
+        if (vpcId && typeof vpcId === 'string') {
+          const vpcNodeById = nodes.find(n => n.id === vpcId);
+          if (vpcNodeById) {
+            const vpcModuleName = this.generateModuleName(vpcNodeById);
+            return `module.${vpcModuleName}.vpc_id`;
           }
         }
         break;
 
-      case 'subnet_id':
-        // For EC2 instances, find the subnet they belong to
-        if (currentNode.resourceType === 'aws-ec2') {
-          const subnetId = currentNode.configuration?.subnetId || currentNode.parentId;
-          if (subnetId) {
-            const subnetNode = nodes.find(n => n.id === subnetId);
-            if (subnetNode) {
-              const subnetModuleName = this.generateModuleName(subnetNode);
-              return `module.${subnetModuleName}.subnet_id`;
+      case 'internet_gateway_id':
+        // Find the internet gateway - check configuration first, then look for IGW in nodes
+        const igwId = currentNode.configuration?.internet_gateway_id
+          || currentNode.configuration?.awsInternetGatewayId;
+        if (igwId && typeof igwId === 'string') {
+          const igwNode = nodes.find(n => n.id === igwId);
+          if (igwNode) {
+            const igwModuleName = this.generateModuleName(igwNode);
+            return `module.${igwModuleName}.internet_gateway_id`;
+          }
+        }
+        // For public subnets, find the VPC's internet gateway
+        if (currentNode.resourceType === 'aws-public-subnet' || currentNode.resourceType === 'subnet') {
+          const vpcNode = this.findVpcForNode(currentNode, nodes);
+          if (vpcNode) {
+            // Find IGW attached to this VPC
+            const igwNode = nodes.find(n =>
+              (n.resourceType === 'aws-internet-gateway' || n.resourceType === 'internet-gateway') &&
+              (n.configuration?.awsVpcId === vpcNode.id || n.configuration?.vpc_id === vpcNode.id)
+            );
+            if (igwNode) {
+              const igwModuleName = this.generateModuleName(igwNode);
+              return `module.${igwModuleName}.internet_gateway_id`;
             }
           }
         }
         break;
 
+      case 'subnet_id':
+        // Find the subnet - check configuration first
+        const subnetId = currentNode.configuration?.subnet_id
+          || currentNode.configuration?.subnetId
+          || currentNode.configuration?.awsSubnetId
+          || currentNode.parentId;
+        if (subnetId && typeof subnetId === 'string') {
+          const subnetNode = nodes.find(n => n.id === subnetId);
+          if (subnetNode) {
+            const subnetModuleName = this.generateModuleName(subnetNode);
+            return `module.${subnetModuleName}.subnet_id`;
+          }
+        }
+        break;
+
+      case 'security_group_ids':
+        // Find security groups - configuration can be array of IDs or single ID
+        const sgIds = currentNode.configuration?.security_group_ids
+          || currentNode.configuration?.securityGroups
+          || currentNode.configuration?.awsSecurityGroupIds
+          || [];
+
+        if (Array.isArray(sgIds) && sgIds.length > 0) {
+          // Map each security group ID to a module reference
+          const resolvedSgIds = sgIds
+            .map((sgId: string) => {
+              const sgNode = nodes.find(n => n.id === sgId);
+              if (sgNode) {
+                const sgModuleName = this.generateModuleName(sgNode);
+                return `module.${sgModuleName}.security_group_id`;
+              }
+              return null;
+            })
+            .filter((ref): ref is string => ref !== null);
+
+          if (resolvedSgIds.length > 0) {
+            // Return as array for Terraform
+            return resolvedSgIds;
+          }
+        }
+        // Return empty array if no security groups found
+        return [] as string[];
+
       case 'nat_gateway_id':
-        // For private subnets, this would need NAT gateway logic
-        // For now, return null since we don't have NAT gateway implementation
+        // Find NAT gateway if specified in configuration
+        const natGwId = currentNode.configuration?.nat_gateway_id
+          || currentNode.configuration?.awsNatGatewayId;
+        if (natGwId && typeof natGwId === 'string') {
+          const natGwNode = nodes.find(n => n.id === natGwId);
+          if (natGwNode) {
+            const natGwModuleName = this.generateModuleName(natGwNode);
+            return `module.${natGwModuleName}.nat_gateway_id`;
+          }
+        }
         return null;
 
       default:

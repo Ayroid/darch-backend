@@ -54,13 +54,20 @@ class Logger {
 
     // Console format for development
     const consoleFormat = winston.format.combine(
-      winston.format.timestamp({ format: 'HH:mm:ss.SSS' }),
+      winston.format.timestamp({ format: 'HH:mm:ss' }),
       winston.format.colorize(),
-      winston.format.printf(({ timestamp, level, message, category, component, ...meta }) => {
+      winston.format.printf(({ timestamp, level, message, category, ...meta }) => {
         const categoryStr = category ? `[${category}]` : '';
-        const componentStr = component ? `[${component}]` : '';
-        const metaStr = Object.keys(meta).length > 0 ? ` ${JSON.stringify(meta)}` : '';
-        return `${timestamp} ${level}: ${categoryStr}${componentStr} ${message}${metaStr}`;
+        // Only include essential metadata, filter out verbose fields
+        const filteredMeta = Object.entries(meta).reduce((acc, [key, value]) => {
+          // Exclude verbose fields
+          if (!['component', 'operation', 'service', 'stack', 'timestamp'].includes(key)) {
+            acc[key] = value;
+          }
+          return acc;
+        }, {} as Record<string, any>);
+        const metaStr = Object.keys(filteredMeta).length > 0 ? ` ${JSON.stringify(filteredMeta)}` : '';
+        return `${timestamp} ${level}:${categoryStr} ${message}${metaStr}`;
       })
     );
 
@@ -196,37 +203,28 @@ class Logger {
 
   // Structured logging for HTTP requests
   logRequest(method: string, path: string, ip: string, userAgent?: string, meta: LogMeta = {}): void {
-    this.http(`📥 ${method} ${path}`, {
+    this.http(`${method} ${path}`, {
       ...meta,
-      method,
-      path,
-      ip,
-      userAgent,
-      type: 'request'
+      ip
     });
   }
 
   logResponse(method: string, path: string, statusCode: number, duration: number, meta: LogMeta = {}): void {
-    const emoji = statusCode >= 400 ? '❌' : statusCode >= 300 ? '↩️' : '✅';
-    this.http(`📤 ${emoji} ${method} ${path} - ${statusCode} - ${duration}ms`, {
+    this.http(`${method} ${path} ${statusCode} ${duration}ms`, {
       ...meta,
-      method,
-      path,
       statusCode,
-      duration,
-      type: 'response'
+      duration
     });
   }
 
   // Structured logging for operations
   logOperation(operation: string, component: string, status: 'start' | 'success' | 'error', meta: LogMeta = {}): void {
-    const emoji = status === 'start' ? '🔄' : status === 'success' ? '✅' : '❌';
     const level = status === 'error' ? LogLevel.ERROR : LogLevel.INFO;
+    const statusText = status === 'start' ? 'started' : status;
 
-    this.winston.log(level, `${emoji} ${operation}`, {
+    this.winston.log(level, `${operation} ${statusText}`, {
       ...meta,
       component,
-      operation,
       status
     });
   }
@@ -244,54 +242,43 @@ class Logger {
 
   logTerraformCommand(command: string, exitCode?: number, meta: LogMeta = {}): void {
     const level = exitCode !== undefined && exitCode !== 0 ? LogLevel.ERROR : LogLevel.DEBUG;
-    const emoji = exitCode !== undefined ? (exitCode === 0 ? '✅' : '❌') : '🔧';
 
-    this.terraform(level, `${emoji} terraform ${command}`, {
+    this.terraform(level, `terraform ${command}${exitCode !== undefined ? ` (exit ${exitCode})` : ''}`, {
       ...meta,
-      command,
-      exitCode,
-      component: 'TerraformCLI'
+      exitCode
     });
   }
 
   // File operation logging
   logFileOperation(operation: string, filePath: string, success: boolean, meta: LogMeta = {}): void {
     const level = success ? LogLevel.INFO : LogLevel.ERROR;
-    const emoji = success ? '💾' : '❌';
+    const status = success ? 'success' : 'failed';
 
-    this.file(level, `${emoji} ${operation}: ${filePath}`, {
+    this.file(level, `${operation} ${status}: ${filePath}`, {
       ...meta,
-      operation,
-      filePath,
-      success,
-      component: 'FileManager'
+      success
     });
   }
 
   // Performance logging
   logPerformance(operation: string, duration: number, meta: LogMeta = {}): void {
     const level = duration > 5000 ? LogLevel.WARN : LogLevel.DEBUG;
-    const emoji = duration > 5000 ? '⏱️' : '⚡';
 
-    this.debug(`${emoji} ${operation} completed in ${duration}ms`, {
+    this.debug(`${operation} completed in ${duration}ms`, {
       ...meta,
-      operation,
-      duration,
-      type: 'performance'
+      duration
     });
   }
 
   // Validation logging
   logValidation(type: string, success: boolean, errors?: string[], meta: LogMeta = {}): void {
     const level = success ? LogLevel.INFO : LogLevel.WARN;
-    const emoji = success ? '✅' : '⚠️';
+    const status = success ? 'passed' : 'failed';
 
-    this.validation(level, `${emoji} ${type} validation ${success ? 'passed' : 'failed'}`, {
+    this.validation(level, `${type} validation ${status}`, {
       ...meta,
-      type,
       success,
-      errors,
-      component: 'Validation'
+      errorCount: errors?.length
     });
   }
 

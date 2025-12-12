@@ -36,19 +36,14 @@ export class TerraformController {
 
 			projectName = reqProjectName; // Update for actual use
 
-			logger.terraform(LogLevel.INFO, '📝 Processing modular Terraform generation request', {
+			logger.terraform(LogLevel.INFO, 'Generating Terraform configuration', {
 				requestId: req.requestId,
-				projectName,
-				hasArchitectureData: !!architectureData,
-				component: 'TerraformController',
-				operation: 'generateModularTerraform'
+				projectName
 			});
 
 			if (!architectureData) {
-				logger.validation(LogLevel.WARN, '❌ Architecture data validation failed', {
-					requestId: req.requestId,
-					error: 'Architecture data is required',
-					component: 'TerraformController'
+				logger.validation(LogLevel.WARN, 'Architecture data required', {
+					requestId: req.requestId
 				});
 
 				const errorResponse = ResponseView.error(
@@ -62,10 +57,8 @@ export class TerraformController {
 			let processedArchitectureData: ArchitectureData;
 
 			if (TerraformController.isFrontendFormat(architectureData)) {
-				logger.architecture(LogLevel.INFO, '🎨 Detected frontend format, transforming to backend format', {
-					requestId: req.requestId,
-					projectName,
-					component: 'TerraformController'
+				logger.architecture(LogLevel.INFO, 'Transforming frontend format', {
+					requestId: req.requestId
 				});
 
 				// Validate frontend format first
@@ -100,17 +93,13 @@ export class TerraformController {
 
 				processedArchitectureData = transformationResult.transformed;
 
-				logger.architecture(LogLevel.INFO, '✅ Frontend transformation completed', {
+				logger.architecture(LogLevel.INFO, 'Frontend transformation completed', {
 					requestId: req.requestId,
-					projectName,
-					transformedResourcesCount: transformationResult.mappings.length,
-					component: 'TerraformController'
+					resources: transformationResult.mappings.length
 				});
 			} else {
-				logger.architecture(LogLevel.INFO, '📄 Detected legacy format, proceeding', {
-					requestId: req.requestId,
-					projectName,
-					component: 'TerraformController'
+				logger.architecture(LogLevel.INFO, 'Using legacy format', {
+					requestId: req.requestId
 				});
 
 				processedArchitectureData = architectureData as ArchitectureData;
@@ -201,15 +190,11 @@ export class TerraformController {
 		} catch (error) {
 			const duration = Date.now() - startTime;
 
-			logger.error('❌ Error generating modular Terraform', {
+			logger.error('Error generating Terraform', {
 				requestId: req.requestId,
 				projectName,
 				error: error instanceof Error ? error.message : String(error),
-				stack: error instanceof Error ? error.stack : undefined,
-				duration,
-				category: LogCategory.TERRAFORM,
-				component: 'TerraformController',
-				operation: 'generateModularTerraform'
+				category: LogCategory.TERRAFORM
 			});
 
 			const errorResponse = ResponseView.error(
@@ -233,18 +218,13 @@ export class TerraformController {
 			const { architectureData }: { architectureData: ArchitectureData } =
 				req.body;
 
-			logger.validation(LogLevel.INFO, '🔍 Validating architecture design', {
-				requestId: req.requestId,
-				hasArchitectureData: !!architectureData,
-				component: 'TerraformController',
-				operation: 'validateArchitecture'
+			logger.validation(LogLevel.INFO, 'Validating architecture', {
+				requestId: req.requestId
 			});
 
 			if (!architectureData) {
-				logger.validation(LogLevel.WARN, '❌ Architecture data validation failed', {
-					requestId: req.requestId,
-					error: 'Architecture data is required',
-					component: 'TerraformController'
+				logger.validation(LogLevel.WARN, 'Architecture data required', {
+					requestId: req.requestId
 				});
 
 				const errorResponse = ResponseView.error(
@@ -271,14 +251,10 @@ export class TerraformController {
 		} catch (error) {
 			const duration = Date.now() - startTime;
 
-			logger.error('❌ Error validating architecture', {
+			logger.error('Error validating architecture', {
 				requestId: req.requestId,
 				error: error instanceof Error ? error.message : String(error),
-				stack: error instanceof Error ? error.stack : undefined,
-				duration,
-				category: LogCategory.VALIDATION,
-				component: 'TerraformController',
-				operation: 'validateArchitecture'
+				category: LogCategory.VALIDATION
 			});
 
 			const errorResponse = ResponseView.error(
@@ -310,10 +286,8 @@ export class TerraformController {
 				return;
 			}
 
-			logger.validation(LogLevel.INFO, '🔗 Validating resource dependencies', {
-				requestId: req.requestId,
-				component: 'TerraformController',
-				operation: 'validateDependencies'
+			logger.validation(LogLevel.INFO, 'Validating dependencies', {
+				requestId: req.requestId
 			});
 
 			const parsedArchitecture =
@@ -347,14 +321,10 @@ export class TerraformController {
 		} catch (error) {
 			const duration = Date.now() - startTime;
 
-			logger.error('❌ Error validating dependencies', {
+			logger.error('Error validating dependencies', {
 				requestId: req.requestId,
 				error: error instanceof Error ? error.message : String(error),
-				stack: error instanceof Error ? error.stack : undefined,
-				duration,
-				category: LogCategory.VALIDATION,
-				component: 'TerraformController',
-				operation: 'validateDependencies'
+				category: LogCategory.VALIDATION
 			});
 
 			const errorResponse = ResponseView.error(
@@ -372,10 +342,8 @@ export class TerraformController {
 		const startTime = Date.now();
 
 		try {
-			logger.module(LogLevel.INFO, '📦 Fetching available Terraform modules', {
-				requestId: req.requestId,
-				component: 'TerraformController',
-				operation: 'getAvailableModules'
+			logger.module(LogLevel.INFO, 'Fetching available modules', {
+				requestId: req.requestId
 			});
 
 			const modules = await ModuleRegistryService.getAvailableModules();
@@ -401,14 +369,10 @@ export class TerraformController {
 		} catch (error) {
 			const duration = Date.now() - startTime;
 
-			logger.error('❌ Error fetching modules', {
+			logger.error('Error fetching modules', {
 				requestId: req.requestId,
 				error: error instanceof Error ? error.message : String(error),
-				stack: error instanceof Error ? error.stack : undefined,
-				duration,
-				category: LogCategory.MODULE,
-				component: 'TerraformController',
-				operation: 'getAvailableModules'
+				category: LogCategory.MODULE
 			});
 
 			const errorResponse = ResponseView.error(
@@ -434,13 +398,9 @@ export class TerraformController {
 				return;
 			}
 
-			logger.module(LogLevel.INFO, '📋 Fetching module details', {
+			logger.module(LogLevel.INFO, 'Fetching module details', {
 				requestId: req.requestId,
-				moduleCategory: category,
-				moduleName: name,
-				moduleKey: `${category}/${name}`,
-				component: 'TerraformController',
-				operation: 'getModuleDetails'
+				module: `${category}/${name}`
 			});
 
 			const module = await ModuleRegistryService.getModule(category, name);
@@ -467,12 +427,9 @@ export class TerraformController {
 
 			res.json(response);
 		} catch (error) {
-			logger.error("❌ Error fetching module details", {
+			logger.error("Error fetching module details", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.MODULE,
-				component: 'TerraformController',
-				operation: 'getModuleDetails',
-				requestId: (req as any).id
+				category: LogCategory.MODULE
 			});
 			const errorResponse = ResponseView.error(
 				"Failed to fetch module details",
@@ -500,12 +457,8 @@ export class TerraformController {
 				return;
 			}
 
-			logger.info(`✅ Validating configuration for module: ${category}/${name}`, {
-				category: LogCategory.VALIDATION,
-				component: 'TerraformController',
-				operation: 'validateModuleConfiguration',
-				moduleName: `${category}/${name}`,
-				requestId: (req as any).id
+			logger.info(`Validating module configuration: ${category}/${name}`, {
+				category: LogCategory.VALIDATION
 			});
 
 			const validation =
@@ -526,12 +479,9 @@ export class TerraformController {
 
 			res.json(response);
 		} catch (error) {
-			logger.error("❌ Error validating module configuration", {
+			logger.error("Error validating module configuration", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.VALIDATION,
-				component: 'TerraformController',
-				operation: 'validateModuleConfiguration',
-				requestId: (req as any).id
+				category: LogCategory.VALIDATION
 			});
 			const errorResponse = ResponseView.error(
 				"Failed to validate module configuration",
@@ -565,12 +515,9 @@ export class TerraformController {
 				return;
 			}
 
-			logger.info(`🚀 Starting async Terraform plan execution for project: ${projectName}`, {
+			logger.info(`Starting Terraform plan: ${projectName}`, {
 				category: LogCategory.TERRAFORM,
-				component: 'TerraformController',
-				operation: 'executePlan',
-				projectName,
-				requestId: (req as any).id
+				projectName
 			});
 
 			// Check if project exists and get latest version
@@ -580,12 +527,9 @@ export class TerraformController {
 			);
 
 			if (!existingProjectPath || !latestVersionId) {
-				logger.error(`❌ Project '${projectName}' not found`, {
+				logger.error(`Project not found: ${projectName}`, {
 					category: LogCategory.FILE,
-					component: 'TerraformController',
-					operation: 'executePlan',
-					projectName,
-					requestId: (req as any).id
+					projectName
 				});
 
 				// List available projects for debugging
@@ -595,11 +539,7 @@ export class TerraformController {
 				);
 				logger.info("Available projects for debugging", {
 					category: LogCategory.FILE,
-					component: 'TerraformController',
-					operation: 'executePlan-debug',
-					availableProjects: projects.map((p) => p.name),
-					availableVersions: projectVersions.map((p) => p.projectId),
-					requestId: (req as any).id
+					projects: projects.map((p) => p.name).join(', ')
 				});
 
 				const errorResponse = ResponseView.error(
@@ -610,14 +550,10 @@ export class TerraformController {
 				return;
 			}
 
-			logger.info(`📁 Using latest version '${latestVersionId}' at: ${existingProjectPath}`, {
+			logger.info(`Using version ${latestVersionId}`, {
 				category: LogCategory.FILE,
-				component: 'TerraformController',
-				operation: 'executePlan',
 				projectName,
-				versionId: latestVersionId,
-				projectPath: existingProjectPath,
-				requestId: (req as any).id
+				version: latestVersionId
 			});
 
 			// Validate that the project has necessary Terraform files
@@ -625,13 +561,9 @@ export class TerraformController {
 				projectName,
 				"main.tf"
 			);
-			logger.info(`🔍 main.tf exists: ${hasMainTf}`, {
+			logger.debug(`main.tf exists: ${hasMainTf}`, {
 				category: LogCategory.FILE,
-				component: 'TerraformController',
-				operation: 'executePlan',
-				projectName,
-				hasMainTf,
-				requestId: (req as any).id
+				projectName
 			});
 
 			if (!hasMainTf) {
@@ -683,12 +615,9 @@ export class TerraformController {
 
 			res.json(response);
 		} catch (error) {
-			logger.error("❌ Error starting Terraform plan execution", {
+			logger.error("Error starting Terraform plan", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.TERRAFORM,
-				component: 'TerraformController',
-				operation: 'executePlan',
-				requestId: (req as any).id
+				category: LogCategory.TERRAFORM
 			});
 			const errorResponse = ResponseView.error(
 				"Failed to start Terraform plan execution",
@@ -740,12 +669,9 @@ export class TerraformController {
 
 			res.json(response);
 		} catch (error) {
-			logger.error("❌ Error getting plan status", {
+			logger.error("Error getting plan status", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.TERRAFORM,
-				component: 'TerraformController',
-				operation: 'getPlanStatus',
-				requestId: (req as any).id
+				category: LogCategory.TERRAFORM
 			});
 			const errorResponse = ResponseView.error(
 				"Failed to get plan status",
@@ -782,12 +708,9 @@ export class TerraformController {
 
 			res.json(response);
 		} catch (error) {
-			logger.error("❌ Error getting all plan jobs", {
+			logger.error("Error getting plan jobs", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.TERRAFORM,
-				component: 'TerraformController',
-				operation: 'getAllPlanJobs',
-				requestId: (req as any).id
+				category: LogCategory.TERRAFORM
 			});
 			const errorResponse = ResponseView.error(
 				"Failed to get plan jobs",
@@ -831,12 +754,9 @@ export class TerraformController {
 				res.status(404).json(errorResponse);
 			}
 		} catch (error) {
-			logger.error("❌ Error deleting plan job", {
+			logger.error("Error deleting plan job", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.TERRAFORM,
-				component: 'TerraformController',
-				operation: 'deletePlanJob',
-				requestId: (req as any).id
+				category: LogCategory.TERRAFORM
 			});
 			const errorResponse = ResponseView.error(
 				"Failed to delete plan job",
@@ -874,12 +794,9 @@ export class TerraformController {
 				return;
 			}
 
-			logger.info(`🚀 Starting async Terraform apply execution for project: ${projectName}`, {
+			logger.info(`Starting Terraform apply: ${projectName}`, {
 				category: LogCategory.TERRAFORM,
-				component: 'TerraformController',
-				operation: 'executeApply',
-				projectName,
-				requestId: (req as any).id
+				projectName
 			});
 
 			// Check if project exists and get latest version
@@ -973,12 +890,9 @@ export class TerraformController {
 
 			res.json(response);
 		} catch (error) {
-			logger.error("❌ Error starting Terraform apply execution", {
+			logger.error("Error starting Terraform apply", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.TERRAFORM,
-				component: 'TerraformController',
-				operation: 'executeApply',
-				requestId: (req as any).id
+				category: LogCategory.TERRAFORM
 			});
 			const errorResponse = ResponseView.error(
 				"Failed to start Terraform apply execution",
@@ -1030,12 +944,9 @@ export class TerraformController {
 
 			res.json(response);
 		} catch (error) {
-			logger.error("❌ Error getting apply status", {
+			logger.error("Error getting apply status", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.TERRAFORM,
-				component: 'TerraformController',
-				operation: 'getApplyStatus',
-				requestId: (req as any).id
+				category: LogCategory.TERRAFORM
 			});
 			const errorResponse = ResponseView.error(
 				"Failed to get apply status",
@@ -1073,12 +984,9 @@ export class TerraformController {
 				return;
 			}
 
-			logger.info(`🔥 Starting async Terraform destroy execution for project: ${projectName}`, {
+			logger.info(`Starting Terraform destroy: ${projectName}`, {
 				category: LogCategory.TERRAFORM,
-				component: 'TerraformController',
-				operation: 'executeDestroy',
-				projectName,
-				requestId: (req as any).id
+				projectName
 			});
 
 			// Check if project exists and get latest version
@@ -1150,12 +1058,9 @@ export class TerraformController {
 
 			res.json(response);
 		} catch (error) {
-			logger.error("❌ Error starting Terraform destroy execution", {
+			logger.error("Error starting Terraform destroy", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.TERRAFORM,
-				component: 'TerraformController',
-				operation: 'executeDestroy',
-				requestId: (req as any).id
+				category: LogCategory.TERRAFORM
 			});
 			const errorResponse = ResponseView.error(
 				"Failed to start Terraform destroy execution",
@@ -1207,12 +1112,9 @@ export class TerraformController {
 
 			res.json(response);
 		} catch (error) {
-			logger.error("❌ Error getting destroy status", {
+			logger.error("Error getting destroy status", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.TERRAFORM,
-				component: 'TerraformController',
-				operation: 'getDestroyStatus',
-				requestId: (req as any).id
+				category: LogCategory.TERRAFORM
 			});
 			const errorResponse = ResponseView.error(
 				"Failed to get destroy status",
@@ -1230,11 +1132,8 @@ export class TerraformController {
 		res: Response
 	): Promise<void> {
 		try {
-			logger.info("🔄 Refreshing module registry", {
-				category: LogCategory.MODULE,
-				component: 'TerraformController',
-				operation: 'refreshModuleRegistry',
-				requestId: (req as any).id
+			logger.info("Refreshing module registry", {
+				category: LogCategory.MODULE
 			});
 
 			await ModuleRegistryService.refresh();
@@ -1250,12 +1149,9 @@ export class TerraformController {
 
 			res.json(response);
 		} catch (error) {
-			logger.error("❌ Error refreshing module registry", {
+			logger.error("Error refreshing module registry", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.MODULE,
-				component: 'TerraformController',
-				operation: 'refreshModuleRegistry',
-				requestId: (req as any).id
+				category: LogCategory.MODULE
 			});
 			const errorResponse = ResponseView.error(
 				"Failed to refresh module registry",
@@ -1274,12 +1170,9 @@ export class TerraformController {
 			const response = ResponseView.terraformFilesList(files);
 			res.json(response);
 		} catch (error) {
-			logger.error("❌ Error listing terraform files", {
+			logger.error("Error listing terraform files", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.FILE,
-				component: 'TerraformController',
-				operation: 'listTerraformFiles',
-				requestId: (req as any).id
+				category: LogCategory.FILE
 			});
 			const errorResponse = ResponseView.error(
 				"Failed to list terraform files"
@@ -1312,12 +1205,9 @@ export class TerraformController {
 			const response = ResponseView.terraformFileContent(filename, content);
 			res.json(response);
 		} catch (error) {
-			logger.error("❌ Error reading terraform file", {
+			logger.error("Error reading terraform file", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.FILE,
-				component: 'TerraformController',
-				operation: 'readTerraformFile',
-				requestId: (req as any).id
+				category: LogCategory.FILE
 			});
 			const errorResponse = ResponseView.error("Failed to read terraform file");
 			res.status(500).json(errorResponse);
@@ -1347,12 +1237,9 @@ export class TerraformController {
 
 			res.download(filePath, filename);
 		} catch (error) {
-			logger.error("❌ Error downloading terraform file", {
+			logger.error("Error downloading terraform file", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.FILE,
-				component: 'TerraformController',
-				operation: 'downloadTerraformFile',
-				requestId: (req as any).id
+				category: LogCategory.FILE
 			});
 			const errorResponse = ResponseView.error(
 				"Failed to download terraform file"
@@ -1387,12 +1274,9 @@ export class TerraformController {
 
 			res.send(zipBuffer);
 		} catch (error) {
-			logger.error("❌ Error creating project ZIP", {
+			logger.error("Error creating project ZIP", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.FILE,
-				component: 'TerraformController',
-				operation: 'createProjectZip',
-				requestId: (req as any).id
+				category: LogCategory.FILE
 			});
 			const errorResponse = ResponseView.error(
 				"Failed to create project ZIP file"
@@ -1410,12 +1294,9 @@ export class TerraformController {
 			const response = ResponseView.projectsList(projects);
 			res.json(response);
 		} catch (error) {
-			logger.error("❌ Error listing projects", {
+			logger.error("Error listing projects", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.FILE,
-				component: 'TerraformController',
-				operation: 'listProjects',
-				requestId: (req as any).id
+				category: LogCategory.FILE
 			});
 			const errorResponse = ResponseView.error("Failed to list projects");
 			res.status(500).json(errorResponse);
@@ -1441,12 +1322,9 @@ export class TerraformController {
 			const response = ResponseView.terraformFilesList(files);
 			res.json(response);
 		} catch (error) {
-			logger.error("❌ Error listing project files", {
+			logger.error("Error listing project files", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.FILE,
-				component: 'TerraformController',
-				operation: 'listProjectFiles',
-				requestId: (req as any).id
+				category: LogCategory.FILE
 			});
 			const errorResponse = ResponseView.error("Failed to list project files");
 			res.status(500).json(errorResponse);
@@ -1577,12 +1455,9 @@ export class TerraformController {
 			);
 			res.json(response);
 		} catch (error) {
-			logger.error("❌ Error getting project structure", {
+			logger.error("Error getting project structure", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.FILE,
-				component: 'TerraformController',
-				operation: 'getProjectStructure',
-				requestId: (req as any).id
+				category: LogCategory.FILE
 			});
 			const errorResponse = ResponseView.error(
 				"Failed to get project structure"
@@ -1616,12 +1491,9 @@ export class TerraformController {
 			);
 			res.json(response);
 		} catch (error) {
-			logger.error("❌ Error deleting project", {
+			logger.error("Error deleting project", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.FILE,
-				component: 'TerraformController',
-				operation: 'deleteProject',
-				requestId: (req as any).id
+				category: LogCategory.FILE
 			});
 			const errorResponse = ResponseView.error("Failed to delete project");
 			res.status(500).json(errorResponse);

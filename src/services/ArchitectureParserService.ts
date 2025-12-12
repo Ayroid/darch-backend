@@ -70,11 +70,9 @@ export class ArchitectureParserService {
 	static parseArchitecture(
 		architectureData: ArchitectureData
 	): ParsedArchitecture {
-		logger.architecture(LogLevel.INFO, "🔄 Parsing architecture data", {
-			component: "ArchitectureParserService",
-			operation: "parseArchitecture",
-			nodesCount: architectureData.nodes?.length || 0,
-			connectionsCount: architectureData.connections?.length || 0,
+		logger.architecture(LogLevel.INFO, "Parsing architecture", {
+			nodes: architectureData.nodes?.length || 0,
+			connections: architectureData.connections?.length || 0
 		});
 
 		const parsedNodes = this.parseNodes(architectureData.nodes);
@@ -93,12 +91,9 @@ export class ArchitectureParserService {
 			metadata
 		);
 
-		logger.architecture(LogLevel.INFO, "✅ Architecture parsing completed", {
-			component: "ArchitectureParserService",
-			operation: "parseArchitecture",
-			parsedNodesCount: parsedNodes.length,
-			parsedConnectionsCount: parsedConnections.length,
-			validationPassed: validation.valid,
+		logger.architecture(LogLevel.INFO, "Architecture parsing completed", {
+			nodes: parsedNodes.length,
+			valid: validation.valid
 		});
 
 		return {
@@ -209,17 +204,11 @@ export class ArchitectureParserService {
 
 		const module = moduleMap[resourceType.toLowerCase()];
 		if (!module) {
-			logger.warn(
-				`⚠️ No module mapping found for resource type: ${resourceType}`,
-				{
-					resourceType,
-					availableTypes: Object.keys(moduleMap),
-					fallbackModule: "compute/ec2",
-					category: LogCategory.MODULE,
-					component: "ArchitectureParserService",
-					operation: "getModuleForResourceType",
-				}
-			);
+			logger.warn(`No module mapping for resource type: ${resourceType}`, {
+				resourceType,
+				fallback: "compute/ec2",
+				category: LogCategory.MODULE
+			});
 			return "compute/ec2"; // Default fallback
 		}
 
@@ -394,17 +383,11 @@ export class ArchitectureParserService {
 		for (const node of nodes) {
 			const nodeValidation = this.validateNode(node, nodes);
 			if (nodeValidation.errors.length > 0) {
-				logger.architecture(
-					LogLevel.ERROR,
-					`❌ Node validation failed for ${node.resourceType} ${node.id}`,
-					{
-						component: "ArchitectureParserService",
-						operation: "validateArchitecture",
-						nodeId: node.id,
-						resourceType: node.resourceType,
-						errors: nodeValidation.errors,
-					}
-				);
+				logger.architecture(LogLevel.ERROR, `Node validation failed: ${node.id}`, {
+					nodeId: node.id,
+					resourceType: node.resourceType,
+					errorCount: nodeValidation.errors.length
+				});
 			}
 			errors.push(...nodeValidation.errors);
 			warnings.push(...nodeValidation.warnings);
@@ -413,10 +396,8 @@ export class ArchitectureParserService {
 		// Validate dependencies
 		const dependencyValidation = this.validateDependencies(nodes);
 		if (dependencyValidation.errors.length > 0) {
-			logger.architecture(LogLevel.ERROR, "❌ Dependency validation failed", {
-				component: "ArchitectureParserService",
-				operation: "validateArchitecture",
-				errors: dependencyValidation.errors,
+			logger.architecture(LogLevel.ERROR, "Dependency validation failed", {
+				errorCount: dependencyValidation.errors.length
 			});
 		}
 		errors.push(...dependencyValidation.errors);
@@ -425,10 +406,8 @@ export class ArchitectureParserService {
 		// Validate connections
 		const connectionValidation = this.validateConnections(connections, nodes);
 		if (connectionValidation.errors.length > 0) {
-			logger.architecture(LogLevel.ERROR, "❌ Connection validation failed", {
-				component: "ArchitectureParserService",
-				operation: "validateArchitecture",
-				errors: connectionValidation.errors,
+			logger.architecture(LogLevel.ERROR, "Connection validation failed", {
+				errorCount: connectionValidation.errors.length
 			});
 		}
 		errors.push(...connectionValidation.errors);
@@ -458,18 +437,10 @@ export class ArchitectureParserService {
 		// Check required fields based on resource type
 		const requiredFields = this.getRequiredFields(node.terraformModule);
 		for (const field of requiredFields) {
-			logger.architecture(
-				LogLevel.DEBUG,
-				`🔍 Validating required field '${field}' for ${node.resourceType} ${node.id}`,
-				{
-					component: "ArchitectureParserService",
-					operation: "validateNode",
-					nodeId: node.id,
-					resourceType: node.resourceType,
-					configuration: node.configuration,
-					field,
-				}
-			);
+			logger.architecture(LogLevel.DEBUG, `Validating field '${field}' for ${node.id}`, {
+				nodeId: node.id,
+				field
+			});
 			if (!(field in node.configuration)) {
 				errors.push({
 					type: "missing_required",

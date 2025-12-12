@@ -16,19 +16,13 @@ export class LoggingMiddleware {
     // Add request ID to request object for downstream use
     req.requestId = requestId;
 
-    // Log incoming request with structured data
+    // Log incoming request
     logger.logRequest(
       req.method,
       req.path,
       req.ip || 'unknown',
       req.get('User-Agent'),
-      {
-        requestId,
-        query: Object.keys(req.query).length > 0 ? req.query : undefined,
-        bodySize: req.get('Content-Length') || undefined,
-        contentType: req.get('Content-Type') || undefined,
-        referer: req.get('Referer') || undefined
-      }
+      { requestId }
     );
 
     // Override res.end to log response
@@ -41,16 +35,12 @@ export class LoggingMiddleware {
         req.path,
         res.statusCode,
         duration,
-        {
-          requestId,
-          responseSize: chunk ? Buffer.byteLength(chunk) : undefined,
-          contentType: res.get('Content-Type') || undefined
-        }
+        { requestId }
       );
 
-      // Log slow requests
-      if (duration > 1000) {
-        logger.logPerformance(`HTTP ${req.method} ${req.path}`, duration, {
+      // Log slow requests (only warn if > 5s)
+      if (duration > 5000) {
+        logger.logPerformance(`${req.method} ${req.path}`, duration, {
           requestId,
           category: LogCategory.HTTP
         });
@@ -85,10 +75,7 @@ export class LoggingMiddleware {
       requestId: req.requestId,
       method: req.method,
       path: req.path,
-      ip: req.ip,
-      userAgent: req.get('User-Agent'),
       error: error.message,
-      stack: error.stack,
       category: LogCategory.HTTP
     });
     next(error);

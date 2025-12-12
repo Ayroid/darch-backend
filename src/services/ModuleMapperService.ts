@@ -35,12 +35,9 @@ export class ModuleMapperService {
   ): Promise<ModuleMappingResult> {
     const startTime = Date.now();
 
-    logger.module(LogLevel.INFO, '🔄 Mapping architecture to Terraform modules', {
-      nodesCount: parsedArchitecture.nodes.length,
-      connectionsCount: parsedArchitecture.connections.length,
-      provider: parsedArchitecture.metadata.provider,
-      component: 'ModuleMapperService',
-      operation: 'mapArchitectureToModules'
+    logger.module(LogLevel.INFO, 'Mapping architecture to modules', {
+      nodes: parsedArchitecture.nodes.length,
+      provider: parsedArchitecture.metadata.provider
     });
 
     const errors: string[] = [];
@@ -63,13 +60,11 @@ export class ModuleMapperService {
           const errorMessage = `Failed to map node ${node.id}: ${error instanceof Error ? error.message : 'Unknown error'}`;
           errors.push(errorMessage);
 
-          logger.error('❌ Failed to map node to module', {
+          logger.error('Failed to map node to module', {
             nodeId: node.id,
             resourceType: node.resourceType,
             error: error instanceof Error ? error.message : String(error),
-            stack: error instanceof Error ? error.stack : undefined,
-            category: LogCategory.MODULE,
-            component: 'ModuleMapperService'
+            category: LogCategory.MODULE
           });
         }
       }
@@ -80,13 +75,11 @@ export class ModuleMapperService {
 
       const duration = Date.now() - startTime;
 
-      logger.module(LogLevel.INFO, '✅ Successfully mapped architecture to modules', {
-        modulesCount: modules.length,
-        errorsCount: errors.length,
-        warningsCount: warnings.length,
-        dependenciesCount: dependencies.length,
-        duration,
-        component: 'ModuleMapperService'
+      logger.module(LogLevel.INFO, 'Mapped architecture to modules', {
+        modules: modules.length,
+        errors: errors.length,
+        warnings: warnings.length,
+        duration
       });
 
     } catch (error) {
@@ -94,13 +87,9 @@ export class ModuleMapperService {
       const errorMessage = `Failed to map architecture: ${error instanceof Error ? error.message : 'Unknown error'}`;
       errors.push(errorMessage);
 
-      logger.error('❌ Failed to map architecture', {
+      logger.error('Failed to map architecture', {
         error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
-        nodesCount: parsedArchitecture.nodes.length,
-        duration,
-        category: LogCategory.MODULE,
-        component: 'ModuleMapperService'
+        category: LogCategory.MODULE
       });
     }
 
@@ -213,7 +202,8 @@ export class ModuleMapperService {
     const config = node.configuration;
 
     // Direct mapping from configuration
-    if (config[varName] !== undefined) {
+    // Skip direct mapping for routes and associations as they need special handling
+    if (config[varName] !== undefined && varName !== 'routes' && varName !== 'associations') {
       return config[varName];
     }
 
@@ -262,6 +252,40 @@ export class ModuleMapperService {
       case 'nat_gateway_id':
         // This will be resolved at module call time, not as a variable default
         return null;
+
+      case 'routes':
+        // For route-table modules, convert array to map or return empty map
+        if (node.resourceType === 'route-table' || node.resourceType === 'aws-route-table') {
+          const routesValue = config.routes;
+          // If it's an array, convert to empty map (connections will be processed later)
+          if (Array.isArray(routesValue)) {
+            return {};
+          }
+          // If it's already an object/map, return it
+          if (routesValue && typeof routesValue === 'object') {
+            return routesValue;
+          }
+          // Otherwise return empty map
+          return {};
+        }
+        return moduleVar.default;
+
+      case 'associations':
+        // For route-table modules, convert array to map or return empty map
+        if (node.resourceType === 'route-table' || node.resourceType === 'aws-route-table') {
+          const associationsValue = config.associations;
+          // If it's an array, convert to empty map (connections will be processed later)
+          if (Array.isArray(associationsValue)) {
+            return {};
+          }
+          // If it's already an object/map, return it
+          if (associationsValue && typeof associationsValue === 'object') {
+            return associationsValue;
+          }
+          // Otherwise return empty map
+          return {};
+        }
+        return moduleVar.default;
 
       default:
         return moduleVar.default;

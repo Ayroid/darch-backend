@@ -65,55 +65,131 @@ export interface FrontendArchitectureData {
 // Frontend AWS Resource Configuration types
 export interface FrontendVPCConfiguration {
   awsVpcId: string;
-  cidrBlock?: string;
+  cidrBlock: string; // Required: IPv4 CIDR block
   awsRegionId?: string;
   description?: string;
-  enableDnsSupport?: boolean;
-  enableDnsHostnames?: boolean;
-  tags?: string | Record<string, string>;
+  enableDnsSupport?: boolean; // Default: true
+  enableDnsHostnames?: boolean; // Default: false
+  instanceTenancy?: "default" | "dedicated"; // Default: "default"
+  assignGeneratedIpv6CidrBlock?: boolean; // Default: false
+  ipv6CidrBlock?: string; // Optional: IPv6 CIDR block
+  ipv6IpamPoolId?: string; // Optional: IPv6 IPAM pool ID
+  ipv6NetmaskLength?: number; // Optional: IPv6 netmask length
+  tags?: string | Record<string, string>; // string for backward compatibility
 }
 
 export interface FrontendEC2Configuration {
+  // Basic Configuration
   awsEc2Id: string;
-  instanceType?: string;
-  amiId?: string;
+  instanceType: string; // Required: e.g., "t3.micro", "t2.micro"
+  amiId: string; // Required: Amazon Machine Image ID
   keyPairName?: string;
+
+  // Instance Details
   awsRegionId?: string;
   awsAvailabilityZone?: string;
   subnetId?: string;
-  securityGroups?: string[];
-  rootVolumeSize?: number;
-  rootVolumeType?: string;
-  deleteOnTermination?: boolean;
-  encrypted?: boolean;
-  detailedMonitoring?: boolean;
-  terminationProtection?: boolean;
-  autoRecovery?: boolean;
-  associatePublicIpAddress?: boolean;
-  tenancy?: string;
+  securityGroups?: string[]; // VPC security group IDs
+  iamInstanceProfile?: string;
+
+  // Storage
+  rootVolumeSize?: number; // Default: 8 GB (AMI default)
+  rootVolumeType?: "gp2" | "gp3" | "io1" | "io2" | "st1" | "sc1" | "standard";
+  deleteOnTermination?: boolean; // Default: true
+  encrypted?: boolean; // Default: false
+  ebsOptimized?: boolean; // Default: false
+
+  // Monitoring & Management
+  detailedMonitoring?: boolean; // Default: false
+  terminationProtection?: boolean; // Default: false
+  autoRecovery?: boolean; // Default: true
+  shutdownBehavior?: "stop" | "terminate"; // Default: "stop"
+
+  // User Data
+  userData?: string; // Base64 encoded user data script
+  userDataReplaceOnChange?: boolean; // Default: false
+
+  // Network Settings
+  associatePublicIpAddress?: boolean; // Default: false
+  enhancedNetworking?: boolean; // Default: false
+  sriovNetSupport?: "simple"; // SR-IOV support
+  privateIp?: string; // Primary private IPv4 address
+  ipv6AddressCount?: number; // Number of IPv6 addresses
+  ipv6Addresses?: string[]; // Specific IPv6 addresses
+
+  // Placement
+  tenancy?: "default" | "dedicated" | "host"; // Default: "default"
+  hostId?: string;
+  placementGroup?: string;
+  availabilityZone?: string;
+
+  // Instance Metadata Service (IMDSv2)
+  metadataOptions?: {
+    httpEndpoint?: "enabled" | "disabled"; // Default: "enabled"
+    httpTokens?: "optional" | "required"; // Default: "optional"
+    httpPutResponseHopLimit?: number; // Default: 1
+    instanceMetadataTags?: "enabled" | "disabled"; // Default: "disabled"
+  };
+
+  // CPU Options
+  cpuCoreCount?: number;
+  cpuThreadsPerCore?: number;
+  cpuCredits?: "standard" | "unlimited"; // For T2/T3 instances
+
+  // Capacity Reservation
+  capacityReservationSpecification?: {
+    capacityReservationPreference?: "open" | "none";
+    capacityReservationTarget?: {
+      capacityReservationId?: string;
+      capacityReservationResourceGroupArn?: string;
+    };
+  };
+
+  // Tags
   tags?: Record<string, string>;
+  volumeTags?: Record<string, string>; // Tags for EBS volumes
 }
 
 export interface FrontendPublicSubnetConfiguration {
   awsPublicSubnetId: string;
-  cidrBlock: string;
-  awsVpcId: string;
-  awsRegionId: string;
-  awsAvailabilityZone: string;
-  description: string;
-  mapPublicIpOnLaunch: boolean;
+  cidrBlock: string; // Required: IPv4 CIDR block
+  awsVpcId: string; // Required: VPC ID
+  awsRegionId?: string;
+  awsAvailabilityZone: string; // Required: Availability Zone
+  availabilityZoneId?: string; // Optional: AZ ID
+  description?: string;
+  mapPublicIpOnLaunch: boolean; // Default: true for public subnets
+  assignIpv6AddressOnCreation?: boolean; // Default: false
+  customerOwnedIpv4Pool?: string; // Optional: Customer owned IPv4 pool
+  enableDns64?: boolean; // Default: false
+  enableResourceNameDnsARecordOnLaunch?: boolean; // Default: false
+  enableResourceNameDnsAAAARecordOnLaunch?: boolean; // Default: false
+  ipv6CidrBlock?: string; // Optional: IPv6 CIDR block
+  ipv6Native?: boolean; // Default: false (IPv6-only subnet)
+  outpostArn?: string; // Optional: Outpost ARN
+  privateDnsHostnameTypeOnLaunch?: "ip-name" | "resource-name"; // Default: "ip-name"
   tags?: string | Record<string, string>;
 }
 
 export interface FrontendPrivateSubnetConfiguration {
   awsPrivateSubnetId: string;
-  cidrBlock: string;
-  awsVpcId: string;
-  awsRegionId: string;
-  awsAvailabilityZone: string;
-  description: string;
-  mapPublicIpOnLaunch: boolean;
-  enableNatGateway: boolean;
+  cidrBlock: string; // Required: IPv4 CIDR block
+  awsVpcId: string; // Required: VPC ID
+  awsRegionId?: string;
+  awsAvailabilityZone: string; // Required: Availability Zone
+  availabilityZoneId?: string; // Optional: AZ ID
+  description?: string;
+  mapPublicIpOnLaunch: boolean; // Default: false for private subnets
+  enableNatGateway?: boolean; // Custom field for Darch
+  assignIpv6AddressOnCreation?: boolean; // Default: false
+  customerOwnedIpv4Pool?: string; // Optional: Customer owned IPv4 pool
+  enableDns64?: boolean; // Default: false
+  enableResourceNameDnsARecordOnLaunch?: boolean; // Default: false
+  enableResourceNameDnsAAAARecordOnLaunch?: boolean; // Default: false
+  ipv6CidrBlock?: string; // Optional: IPv6 CIDR block
+  ipv6Native?: boolean; // Default: false (IPv6-only subnet)
+  outpostArn?: string; // Optional: Outpost ARN
+  privateDnsHostnameTypeOnLaunch?: "ip-name" | "resource-name"; // Default: "ip-name"
   tags?: string | Record<string, string>;
 }
 
@@ -139,19 +215,29 @@ export interface FrontendAvailabilityZoneConfiguration {
 
 export interface FrontendSecurityGroupConfiguration {
   awsSecurityGroupId: string;
-  groupId?: string;
-  awsVpcId: string;
-  description?: string;
-  ingressRules?: FrontendSecurityGroupRule[];
-  egressRules?: FrontendSecurityGroupRule[];
+  name?: string; // Security group name
+  namePrefix?: string; // Creates unique name beginning with prefix
+  groupId?: string; // The ID of the security group (output)
+  awsVpcId: string; // Required: VPC ID
+  description?: string; // Default: "Managed by Terraform"
+  ingressRules: FrontendSecurityGroupRule[]; // Ingress rules
+  egressRules: FrontendSecurityGroupRule[]; // Egress rules
+  revokeRulesOnDelete?: boolean; // Default: false
   tags?: Record<string, string>;
 }
 
 export interface FrontendSecurityGroupRule {
-  protocol: "tcp" | "udp" | "icmp" | "all";
-  port: number | string;
-  source?: string;
-  destination?: string;
+  protocol: "tcp" | "udp" | "icmp" | "icmpv6" | "all" | string; // Protocol (-1 for all)
+  fromPort?: number; // Start of port range
+  toPort?: number; // End of port range
+  port?: number | string; // Simplified port (for backward compatibility)
+  cidrBlocks?: string[]; // IPv4 CIDR blocks
+  ipv6CidrBlocks?: string[]; // IPv6 CIDR blocks
+  source?: string; // CIDR or security group ID for ingress (backward compatibility)
+  destination?: string; // CIDR or security group ID for egress (backward compatibility)
+  sourceSecurityGroupId?: string; // Source security group ID
+  selfReference?: boolean; // Reference to the security group itself
+  prefixListIds?: string[]; // Prefix list IDs
   description?: string;
 }
 
@@ -163,17 +249,60 @@ export interface FrontendInternetGatewayConfiguration {
   tags?: Record<string, string>;
 }
 
-export interface FrontendRouteTableConfiguration {
-  awsRouteTableId?: string;
-  awsVpcId?: string;
-  routes?: Record<string, {
-    destinationCidrBlock?: string;
-    gatewayId?: string;
-    natGatewayId?: string;
-    vpcPeeringConnectionId?: string;
-  }>;
-  subnetAssociations?: string[];
+export interface FrontendNATGatewayConfiguration {
+  awsNatGatewayId: string;
+  awsSubnetId: string; // Required: Subnet ID for the NAT Gateway
+  allocationId?: string; // Elastic IP allocation ID (required for public NAT Gateway)
+  connectivityType?: "public" | "private"; // Default: "public"
+  privateIp?: string; // Private IPv4 address (for private NAT Gateway)
+  secondaryAllocationIds?: string[]; // Secondary EIP allocation IDs
+  secondaryPrivateIpAddressCount?: number; // Number of secondary private IPs
+  secondaryPrivateIpAddresses?: string[]; // Secondary private IP addresses
+  state?: "pending" | "failed" | "available" | "deleting" | "deleted"; // Status (output)
+  description?: string;
   tags?: Record<string, string>;
+}
+
+export interface FrontendRouteTableConfiguration {
+  awsRouteTableId: string;
+  awsVpcId: string; // Required: VPC ID
+  awsInternetGatewayId?: string; // For convenience (not AWS parameter)
+  awsSubnetId?: string; // For convenience (not AWS parameter)
+  routes: FrontendRoute[]; // Routes (can be empty, local route is implicit)
+  associations: FrontendRouteTableAssociation[]; // Subnet associations
+  propagatingVgws?: string[]; // List of virtual gateways for route propagation
+  description?: string;
+  tags?: Record<string, string>;
+}
+
+export interface FrontendRoute {
+  // Destination (one required)
+  destinationCidrBlock?: string; // IPv4 CIDR block
+  destinationIpv6CidrBlock?: string; // IPv6 CIDR block
+  destinationPrefixListId?: string; // Prefix list ID
+
+  // Target (one required)
+  gatewayId?: string; // Internet Gateway or Virtual Private Gateway ID
+  egressOnlyGatewayId?: string; // Egress Only Internet Gateway ID (IPv6)
+  instanceId?: string; // EC2 instance ID
+  natGatewayId?: string; // NAT Gateway ID
+  localGatewayId?: string; // Local Gateway ID
+  networkInterfaceId?: string; // Network Interface ID
+  transitGatewayId?: string; // Transit Gateway ID
+  vpcEndpointId?: string; // VPC Endpoint ID
+  vpcPeeringConnectionId?: string; // VPC Peering Connection ID
+  carrierGatewayId?: string; // Carrier Gateway ID
+  coreNetworkArn?: string; // Core Network ARN
+
+  // Status (output)
+  state?: "active" | "blackhole";
+}
+
+export interface FrontendRouteTableAssociation {
+  associationId?: string; // Association ID (output)
+  subnetId?: string; // Subnet ID to associate
+  gatewayId?: string; // Gateway ID to associate
+  main?: boolean; // Whether this is the main route table
 }
 
 export type FrontendAWSResourceConfiguration =
@@ -185,6 +314,7 @@ export type FrontendAWSResourceConfiguration =
   | FrontendAvailabilityZoneConfiguration
   | FrontendSecurityGroupConfiguration
   | FrontendInternetGatewayConfiguration
+  | FrontendNATGatewayConfiguration
   | FrontendRouteTableConfiguration
   | Record<string, any>;
 
@@ -210,11 +340,9 @@ export class FrontendArchitectureTransformerService {
   static transformToBackendFormat(frontendData: FrontendArchitectureData): TransformationResult {
     const startTime = Date.now();
 
-    logger.architecture(LogLevel.INFO, '🔄 Transforming frontend architecture data to backend format', {
-      nodesCount: frontendData.nodes?.length || 0,
-      connectionsCount: frontendData.connections?.length || 0,
-      provider: frontendData.metadata?.provider,
-      component: 'FrontendArchitectureTransformerService'
+    logger.architecture(LogLevel.INFO, 'Transforming frontend architecture', {
+      nodes: frontendData.nodes?.length || 0,
+      connections: frontendData.connections?.length || 0
     });
 
     const warnings: string[] = [];
@@ -252,14 +380,11 @@ export class FrontendArchitectureTransformerService {
 
       const duration = Date.now() - startTime;
 
-      logger.architecture(LogLevel.INFO, '✅ Frontend transformation completed successfully', {
-        nodesCount: transformedNodes.length,
-        connectionsCount: transformedConnections.length,
-        warningsCount: warnings.length,
-        errorsCount: errors.length,
-        mappingsCount: mappings.length,
-        duration,
-        component: 'FrontendArchitectureTransformerService'
+      logger.architecture(LogLevel.INFO, 'Frontend transformation completed', {
+        nodes: transformedNodes.length,
+        warnings: warnings.length,
+        errors: errors.length,
+        duration
       });
 
       return {
@@ -272,11 +397,9 @@ export class FrontendArchitectureTransformerService {
     } catch (error) {
       const errorMessage = `Failed to transform architecture data: ${error instanceof Error ? error.message : 'Unknown error'}`;
       errors.push(errorMessage);
-      logger.error('❌ Architecture transformation failed', {
+      logger.error('Architecture transformation failed', {
         error: errorMessage,
-        category: LogCategory.ARCHITECTURE,
-        component: 'FrontendArchitectureTransformerService',
-        operation: 'transform'
+        category: LogCategory.ARCHITECTURE
       });
 
       return {
@@ -410,12 +533,10 @@ export class FrontendArchitectureTransformerService {
       } catch (error) {
         const errorMessage = `Failed to transform node ${frontendNode.id}: ${error instanceof Error ? error.message : 'Unknown error'}`;
         errors.push(errorMessage);
-        logger.error('❌ Node transformation failed', {
+        logger.error('Node transformation failed', {
           error: errorMessage,
           nodeId: frontendNode.id,
-          category: LogCategory.ARCHITECTURE,
-          component: 'FrontendArchitectureTransformerService',
-          operation: 'transformNode'
+          category: LogCategory.ARCHITECTURE
         });
       }
     }
@@ -940,13 +1061,13 @@ export class FrontendArchitectureTransformerService {
       }
     }
 
-    // Transform routes configuration
-    if (config.routes && typeof config.routes === 'object') {
-      const transformedRoutes: any[] = [];
+    // Transform routes configuration to map format (not array)
+    if (config.routes && typeof config.routes === 'object' && !Array.isArray(config.routes)) {
+      // If routes is already an object/map, transform it to proper format
+      const transformedRoutes: Record<string, any> = {};
 
       Object.entries(config.routes).forEach(([routeName, routeConfig]: [string, any]) => {
         const transformedRoute: any = {
-          route_name: routeName,
           destination_cidr_block: routeConfig.destination_cidr_block || routeConfig.destinationCidrBlock || '0.0.0.0/0'
         };
 
@@ -959,20 +1080,71 @@ export class FrontendArchitectureTransformerService {
           transformedRoute.vpc_peering_connection_id = routeConfig.vpc_peering_connection_id || routeConfig.vpcPeeringConnectionId;
         }
 
-        transformedRoutes.push(transformedRoute);
+        transformedRoutes[routeName] = transformedRoute;
       });
 
       config.routes = transformedRoutes;
-      transformations.push('Transformed routes object to array format');
+      transformations.push('Transformed routes object to map format');
+    } else if (Array.isArray(config.routes) || !config.routes) {
+      // If routes is an array or doesn't exist, initialize as empty map
+      config.routes = {};
+      transformations.push('Initialized routes as empty map');
     }
 
-    // Transform subnet associations
-    if (config.subnetAssociations && Array.isArray(config.subnetAssociations)) {
-      config.subnet_associations = config.subnetAssociations;
+    // Handle awsInternetGatewayId from configuration - create default route
+    if (config.awsInternetGatewayId) {
+      if (!config.routes) {
+        config.routes = {};
+      }
+      config.routes['default_route'] = {
+        destination_cidr_block: '0.0.0.0/0',
+        gateway_id: config.awsInternetGatewayId
+      };
+      transformations.push('Created default route from awsInternetGatewayId');
+    }
+
+    // Transform associations configuration to map format
+    if (config.associations && Array.isArray(config.associations)) {
+      // Convert array to map
+      const associationsMap: Record<string, any> = {};
+      config.associations.forEach((assoc: any, index: number) => {
+        const key = assoc.subnet_id ? `subnet_${assoc.subnet_id}` : `association_${index}`;
+        associationsMap[key] = assoc;
+      });
+      config.associations = associationsMap;
+      transformations.push('Transformed associations array to map format');
+    } else if (config.associations && typeof config.associations === 'object') {
+      // Already a map, keep it
+      transformations.push('Preserved associations map format');
+    } else {
+      // Initialize as empty map
+      config.associations = {};
+      transformations.push('Initialized associations as empty map');
+    }
+
+    // Handle awsSubnetId from configuration - create subnet association
+    if (config.awsSubnetId) {
+      if (!config.associations) {
+        config.associations = {};
+      }
+      config.associations['subnet_association'] = {
+        subnet_id: config.awsSubnetId
+      };
+      transformations.push('Created subnet association from awsSubnetId');
+    }
+
+    // Transform subnet associations (legacy field name)
+    if (config.subnetAssociations) {
+      if (!config.associations) {
+        config.associations = {};
+      }
+      if (Array.isArray(config.subnetAssociations)) {
+        config.subnetAssociations.forEach((subnetId: string, index: number) => {
+          config.associations![`subnet_${index}`] = { subnet_id: subnetId };
+        });
+      }
       delete config.subnetAssociations;
-      transformations.push('subnetAssociations → subnet_associations');
-    } else if (!config.subnet_associations) {
-      config.subnet_associations = [];
+      transformations.push('subnetAssociations → associations');
     }
   }
 

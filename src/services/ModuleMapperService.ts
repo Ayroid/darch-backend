@@ -222,16 +222,16 @@ export class ModuleMapperService {
         return config.cidr_block || this.generateDefaultCidr(node);
 
       case 'vpc_id':
-        // Will be resolved in main.tf module call, not as variable default
-        return null;
+        // Return placeholder for cross-module reference resolution
+        return '__MODULE_REF__vpc_id';
 
       case 'subnet_id':
-        // Will be resolved in main.tf module call, not as variable default
-        return null;
+        // Return placeholder for cross-module reference resolution
+        return '__MODULE_REF__subnet_id';
 
       case 'security_group_ids':
-        // This will be resolved at module call time, not as a variable default
-        return [];
+        // Return placeholder for cross-module reference resolution
+        return ['__MODULE_REF__security_group_ids'];
 
       case 'instance_type':
         return config.instance_type || 't3.micro';
@@ -246,12 +246,31 @@ export class ModuleMapperService {
         return this.inferSubnetType(node) === 'public';
 
       case 'internet_gateway_id':
-        // Will be resolved in main.tf module call, not as variable default
-        return null;
+        // Return placeholder for cross-module reference resolution
+        return '__MODULE_REF__internet_gateway_id';
 
       case 'nat_gateway_id':
-        // This will be resolved at module call time, not as a variable default
-        return null;
+        // Return placeholder for cross-module reference resolution
+        return '__MODULE_REF__nat_gateway_id';
+
+      case 'allocation_id':
+        // For NAT Gateway - if specified in config, use it; otherwise let module handle EIP creation
+        return config.allocation_id || moduleVar.default;
+
+      case 'connectivity_type':
+        // For NAT Gateway - default to 'public'
+        return config.connectivity_type || 'public';
+
+      case 'private_ip':
+        // For NAT Gateway - optional private IP
+        return config.private_ip || moduleVar.default;
+
+      case 'create_eip':
+        // For NAT Gateway - default to true if connectivity_type is public and no allocation_id
+        if (config.connectivity_type === 'public' && !config.allocation_id) {
+          return config.create_eip !== undefined ? config.create_eip : true;
+        }
+        return config.create_eip || moduleVar.default;
 
       case 'routes':
         // For route-table modules, convert array to map or return empty map
@@ -324,17 +343,17 @@ export class ModuleMapperService {
     if (resourceType === 'vpc') {
       // For subnets, find the VPC they belong to
       // Look for a VPC node that this subnet references
-      const vpcId = node.configuration?.vpc_id || 
-                   node.configuration?.awsVpcId || 
+      const vpcId = node.configuration?.vpc_id ||
+                   node.configuration?.awsVpcId ||
                    node.parentId;
-                   
+
       if (vpcId) {
-        dependencyNode = allNodes.find(n => 
-          n.resourceType === 'aws-vpc' && 
+        dependencyNode = allNodes.find(n =>
+          n.resourceType === 'aws-vpc' &&
           (n.id === vpcId || n.configuration?.awsVpcId === vpcId)
         );
       }
-      
+
       // If still not found, look up the parent hierarchy
       if (!dependencyNode && node.parentId) {
         const parent = allNodes.find(n => n.id === node.parentId);
@@ -361,8 +380,8 @@ export class ModuleMapperService {
       // For EC2 instances, find the subnet they belong to
       const subnetId = node.configuration?.subnetId || node.parentId;
       if (subnetId) {
-        dependencyNode = allNodes.find(n => 
-          (n.resourceType === 'aws-public-subnet' || n.resourceType === 'aws-private-subnet') && 
+        dependencyNode = allNodes.find(n =>
+          (n.resourceType === 'aws-public-subnet' || n.resourceType === 'aws-private-subnet') &&
           n.id === subnetId
         );
       }

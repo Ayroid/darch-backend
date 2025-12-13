@@ -157,12 +157,36 @@ locals {
     const sortedVars = Object.entries(module.variables).sort(([a], [b]) => a.localeCompare(b));
     for (const [key, value] of sortedVars) {
       let resolvedValue = value;
-      
+
       // Resolve cross-module references for null values
       if (value === null) {
         resolvedValue = this.resolveCrossModuleReference(key, module, allModules, nodes);
       }
-      
+      // Resolve placeholders for cross-module references
+      else if (typeof value === 'string' && value.startsWith('__MODULE_REF__')) {
+        resolvedValue = this.resolveCrossModuleReference(key, module, allModules, nodes);
+        if (!resolvedValue) {
+          logger.terraform(LogLevel.WARN, `Failed to resolve placeholder for ${key} in module ${module.name}`, {
+            variableName: key,
+            moduleName: module.name,
+            placeholder: value
+          });
+          resolvedValue = null;
+        }
+      }
+      // Resolve array placeholders for security groups
+      else if (Array.isArray(value) && value.length > 0 && typeof value[0] === 'string' && value[0].startsWith('__MODULE_REF__')) {
+        resolvedValue = this.resolveCrossModuleReference(key, module, allModules, nodes);
+        if (!resolvedValue || (Array.isArray(resolvedValue) && resolvedValue.length === 0)) {
+          logger.terraform(LogLevel.WARN, `Failed to resolve placeholder array for ${key} in module ${module.name}`, {
+            variableName: key,
+            moduleName: module.name,
+            placeholder: value
+          });
+          resolvedValue = [];
+        }
+      }
+
       const formattedValue = this.formatTerraformValue(resolvedValue);
       block += `  ${key.padEnd(20)} = ${formattedValue}\n`;
     }
@@ -182,7 +206,7 @@ locals {
   }
 
   /**
-   * Resolve cross-module references for variables with null values
+   * Resolve cross-module references for variables with null values or placeholders
    */
   private static resolveCrossModuleReference(
     variableName: string,
@@ -197,6 +221,10 @@ locals {
     });
 
     if (!currentNode) {
+      logger.terraform(LogLevel.WARN, `Cannot resolve ${variableName}: current node not found for module ${currentModule.name}`, {
+        variableName,
+        moduleName: currentModule.name
+      });
       return null;
     }
 
@@ -206,6 +234,11 @@ locals {
         const vpcNode = this.findVpcForNode(currentNode, nodes);
         if (vpcNode) {
           const vpcModuleName = this.generateModuleName(vpcNode);
+          logger.terraform(LogLevel.DEBUG, `Resolved vpc_id for ${currentModule.name} to ${vpcModuleName}`, {
+            variableName,
+            moduleName: currentModule.name,
+            resolvedTo: vpcModuleName
+          });
           return `module.${vpcModuleName}.vpc_id`;
         }
         // If no VPC found in hierarchy, try to find by ID from configuration
@@ -214,9 +247,31 @@ locals {
           const vpcNodeById = nodes.find(n => n.id === vpcId);
           if (vpcNodeById) {
             const vpcModuleName = this.generateModuleName(vpcNodeById);
+            logger.terraform(LogLevel.DEBUG, `Resolved vpc_id by ID for ${currentModule.name} to ${vpcModuleName}`, {
+              variableName,
+              moduleName: currentModule.name,
+              resolvedTo: vpcModuleName
+            });
             return `module.${vpcModuleName}.vpc_id`;
           }
         }
+        // Fallback: search for any VPC in the architecture
+        const anyVpc = nodes.find(n => n.resourceType === 'aws-vpc' || n.resourceType === 'vpc');
+        if (anyVpc) {
+          const vpcModuleName = this.generateModuleName(anyVpc);
+          logger.terraform(LogLevel.WARN, `Using fallback VPC for ${currentModule.name}: ${vpcModuleName}`, {
+            variableName,
+            moduleName: currentModule.name,
+            resolvedTo: vpcModuleName,
+            fallback: true
+          });
+          return `module.${vpcModuleName}.vpc_id`;
+        }
+        logger.terraform(LogLevel.ERROR, `Failed to resolve vpc_id for ${currentModule.name}`, {
+          variableName,
+          moduleName: currentModule.name,
+          nodeId: currentNode.id
+        });
         break;
 
       case 'internet_gateway_id':
@@ -227,6 +282,11 @@ locals {
           const igwNode = nodes.find(n => n.id === igwId);
           if (igwNode) {
             const igwModuleName = this.generateModuleName(igwNode);
+            logger.terraform(LogLevel.DEBUG, `Resolved internet_gateway_id for ${currentModule.name} to ${igwModuleName}`, {
+              variableName,
+              moduleName: currentModule.name,
+              resolvedTo: igwModuleName
+            });
             return `module.${igwModuleName}.internet_gateway_id`;
           }
         }
@@ -241,10 +301,88 @@ locals {
             );
             if (igwNode) {
               const igwModuleName = this.generateModuleName(igwNode);
+              logger.terraform(LogLevel.DEBUG, `Resolved internet_gateway_id via VPC for ${currentModule.name} to ${igwModuleName}`, {
+                variableName,
+                moduleName: currentModule.name,
+                resolvedTo: igwModuleName
+              });
               return `module.${igwModuleName}.internet_gateway_id`;
             }
           }
         }
+        // Fallback: search for any internet gateway in the architecture
+        const anyIgw = nodes.find(n => n.resourceType === 'aws-internet-gateway' || n.resourceType === 'internet-gateway');
+        if (anyIgw) {
+          const igwModuleName = this.generateModuleName(anyIgw);
+          logger.terraform(LogLevel.WARN, `Using fallback IGW for ${currentModule.name}: ${igwModuleName}`, {
+            variableName,
+            moduleName: currentModule.name,
+            resolvedTo: igwModuleName,
+            fallback: true
+          });
+          return `module.${igwModuleName}.internet_gateway_id`;
+        }
+        logger.terraform(LogLevel.WARN, `No internet_gateway_id found for ${currentModule.name}`, {
+          variableName,
+          moduleName: currentModule.name,
+          nodeId: currentNode.id
+        });
+        break;
+
+      case 'nat_gateway_id':
+        // Find the NAT gateway - check configuration first
+        const natId = currentNode.configuration?.nat_gateway_id
+          || currentNode.configuration?.awsNatGatewayId;
+        if (natId && typeof natId === 'string') {
+          const natNode = nodes.find(n => n.id === natId);
+          if (natNode) {
+            const natModuleName = this.generateModuleName(natNode);
+            logger.terraform(LogLevel.DEBUG, `Resolved nat_gateway_id for ${currentModule.name} to ${natModuleName}`, {
+              variableName,
+              moduleName: currentModule.name,
+              resolvedTo: natModuleName
+            });
+            return `module.${natModuleName}.nat_gateway_id`;
+          }
+        }
+        // For private subnets with enableNatGateway flag, find NAT Gateway in same VPC
+        if (currentNode.resourceType === 'aws-private-subnet' ||
+            (currentNode.resourceType === 'subnet' && currentNode.configuration?.enableNatGateway)) {
+          const vpcNode = this.findVpcForNode(currentNode, nodes);
+          if (vpcNode) {
+            // Find NAT Gateway attached to this VPC
+            const natNode = nodes.find(n =>
+              (n.resourceType === 'aws-nat-gateway' || n.resourceType === 'nat-gateway') &&
+              this.findVpcForNode(n, nodes)?.id === vpcNode.id
+            );
+            if (natNode) {
+              const natModuleName = this.generateModuleName(natNode);
+              logger.terraform(LogLevel.DEBUG, `Resolved nat_gateway_id via VPC for ${currentModule.name} to ${natModuleName}`, {
+                variableName,
+                moduleName: currentModule.name,
+                resolvedTo: natModuleName
+              });
+              return `module.${natModuleName}.nat_gateway_id`;
+            }
+          }
+        }
+        // Fallback: search for any NAT gateway in the architecture
+        const anyNat = nodes.find(n => n.resourceType === 'aws-nat-gateway' || n.resourceType === 'nat-gateway');
+        if (anyNat) {
+          const natModuleName = this.generateModuleName(anyNat);
+          logger.terraform(LogLevel.WARN, `Using fallback NAT Gateway for ${currentModule.name}: ${natModuleName}`, {
+            variableName,
+            moduleName: currentModule.name,
+            resolvedTo: natModuleName,
+            fallback: true
+          });
+          return `module.${natModuleName}.nat_gateway_id`;
+        }
+        logger.terraform(LogLevel.WARN, `No nat_gateway_id found for ${currentModule.name}`, {
+          variableName,
+          moduleName: currentModule.name,
+          nodeId: currentNode.id
+        });
         break;
 
       case 'subnet_id':
@@ -257,9 +395,49 @@ locals {
           const subnetNode = nodes.find(n => n.id === subnetId);
           if (subnetNode) {
             const subnetModuleName = this.generateModuleName(subnetNode);
+            logger.terraform(LogLevel.DEBUG, `Resolved subnet_id for ${currentModule.name} to ${subnetModuleName}`, {
+              variableName,
+              moduleName: currentModule.name,
+              resolvedTo: subnetModuleName
+            });
             return `module.${subnetModuleName}.subnet_id`;
           }
         }
+        // Fallback: search for subnet by parent hierarchy
+        let parentNode = currentNode.parentId ? nodes.find(n => n.id === currentNode.parentId) : null;
+        while (parentNode) {
+          if (parentNode.resourceType === 'aws-public-subnet' || parentNode.resourceType === 'aws-private-subnet' || parentNode.resourceType === 'subnet') {
+            const subnetModuleName = this.generateModuleName(parentNode);
+            logger.terraform(LogLevel.DEBUG, `Resolved subnet_id via parent hierarchy for ${currentModule.name} to ${subnetModuleName}`, {
+              variableName,
+              moduleName: currentModule.name,
+              resolvedTo: subnetModuleName
+            });
+            return `module.${subnetModuleName}.subnet_id`;
+          }
+          parentNode = parentNode.parentId ? nodes.find(n => n.id === parentNode.parentId) : null;
+        }
+        // Fallback: search for any subnet in the architecture
+        const anySubnet = nodes.find(n =>
+          n.resourceType === 'aws-public-subnet' ||
+          n.resourceType === 'aws-private-subnet' ||
+          n.resourceType === 'subnet'
+        );
+        if (anySubnet) {
+          const subnetModuleName = this.generateModuleName(anySubnet);
+          logger.terraform(LogLevel.WARN, `Using fallback subnet for ${currentModule.name}: ${subnetModuleName}`, {
+            variableName,
+            moduleName: currentModule.name,
+            resolvedTo: subnetModuleName,
+            fallback: true
+          });
+          return `module.${subnetModuleName}.subnet_id`;
+        }
+        logger.terraform(LogLevel.ERROR, `Failed to resolve subnet_id for ${currentModule.name}`, {
+          variableName,
+          moduleName: currentModule.name,
+          nodeId: currentNode.id
+        });
         break;
 
       case 'security_group_ids':
@@ -283,10 +461,46 @@ locals {
             .filter((ref): ref is string => ref !== null);
 
           if (resolvedSgIds.length > 0) {
+            logger.terraform(LogLevel.DEBUG, `Resolved ${resolvedSgIds.length} security group(s) for ${currentModule.name}`, {
+              variableName,
+              moduleName: currentModule.name,
+              count: resolvedSgIds.length
+            });
             // Return as array for Terraform
             return resolvedSgIds;
           }
         }
+        // Check if there are any security groups defined in the dependencies
+        const allSgNodes = nodes.filter(n =>
+          n.resourceType === 'aws-security-group' ||
+          n.resourceType === 'security-group'
+        );
+        if (allSgNodes.length > 0 && currentNode.dependencies.length > 0) {
+          // Find security groups that are in the dependencies
+          const depSgIds = currentNode.dependencies
+            .map((depId: string) => {
+              const depNode = nodes.find(n => n.id === depId);
+              if (depNode && (depNode.resourceType === 'aws-security-group' || depNode.resourceType === 'security-group')) {
+                const sgModuleName = this.generateModuleName(depNode);
+                return `module.${sgModuleName}.security_group_id`;
+              }
+              return null;
+            })
+            .filter((ref: string | null): ref is string => ref !== null);
+
+          if (depSgIds.length > 0) {
+            logger.terraform(LogLevel.DEBUG, `Resolved ${depSgIds.length} security group(s) from dependencies for ${currentModule.name}`, {
+              variableName,
+              moduleName: currentModule.name,
+              count: depSgIds.length
+            });
+            return depSgIds;
+          }
+        }
+        logger.terraform(LogLevel.DEBUG, `No security groups found for ${currentModule.name}, returning empty array`, {
+          variableName,
+          moduleName: currentModule.name
+        });
         // Return empty array if no security groups found
         return [] as string[];
 
@@ -298,12 +512,57 @@ locals {
           const natGwNode = nodes.find(n => n.id === natGwId);
           if (natGwNode) {
             const natGwModuleName = this.generateModuleName(natGwNode);
+            logger.terraform(LogLevel.DEBUG, `Resolved nat_gateway_id for ${currentModule.name} to ${natGwModuleName}`, {
+              variableName,
+              moduleName: currentModule.name,
+              resolvedTo: natGwModuleName
+            });
             return `module.${natGwModuleName}.nat_gateway_id`;
           }
         }
+        // For private subnets with enableNatGateway flag, find NAT gateway
+        if (currentNode.resourceType === 'aws-private-subnet' && currentNode.configuration?.enableNatGateway) {
+          const vpcNode = this.findVpcForNode(currentNode, nodes);
+          if (vpcNode) {
+            // Find NAT gateway attached to this VPC
+            const natGwNode = nodes.find(n =>
+              (n.resourceType === 'aws-nat-gateway' || n.resourceType === 'nat-gateway') &&
+              (n.configuration?.awsVpcId === vpcNode.id || n.configuration?.vpc_id === vpcNode.id)
+            );
+            if (natGwNode) {
+              const natGwModuleName = this.generateModuleName(natGwNode);
+              logger.terraform(LogLevel.DEBUG, `Resolved nat_gateway_id via VPC for ${currentModule.name} to ${natGwModuleName}`, {
+                variableName,
+                moduleName: currentModule.name,
+                resolvedTo: natGwModuleName
+              });
+              return `module.${natGwModuleName}.nat_gateway_id`;
+            }
+          }
+        }
+        // Fallback: search for any NAT gateway in the architecture
+        const anyNatGw = nodes.find(n => n.resourceType === 'aws-nat-gateway' || n.resourceType === 'nat-gateway');
+        if (anyNatGw && currentNode.resourceType === 'aws-private-subnet') {
+          const natGwModuleName = this.generateModuleName(anyNatGw);
+          logger.terraform(LogLevel.WARN, `Using fallback NAT Gateway for ${currentModule.name}: ${natGwModuleName}`, {
+            variableName,
+            moduleName: currentModule.name,
+            resolvedTo: natGwModuleName,
+            fallback: true
+          });
+          return `module.${natGwModuleName}.nat_gateway_id`;
+        }
+        logger.terraform(LogLevel.DEBUG, `No nat_gateway_id found for ${currentModule.name}`, {
+          variableName,
+          moduleName: currentModule.name
+        });
         return null;
 
       default:
+        logger.terraform(LogLevel.WARN, `Unknown variable name for cross-module resolution: ${variableName}`, {
+          variableName,
+          moduleName: currentModule.name
+        });
         return null;
     }
 
@@ -332,7 +591,7 @@ locals {
       }
       current = parent;
     }
-    
+
     return null;
   }
 

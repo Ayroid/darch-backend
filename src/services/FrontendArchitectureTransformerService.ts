@@ -679,6 +679,9 @@ export class FrontendArchitectureTransformerService {
       case 'aws-internet-gateway':
         this.transformInternetGatewayConfiguration(config, frontendNode, containerMapping, transformations);
         break;
+      case 'aws-nat-gateway':
+        this.transformNatGatewayConfiguration(config, frontendNode, containerMapping, transformations);
+        break;
       case 'aws-route-table':
         this.transformRouteTableConfiguration(config, frontendNode, containerMapping, transformations);
         break;
@@ -1036,6 +1039,117 @@ export class FrontendArchitectureTransformerService {
     if (config.state) {
       transformations.push(`Preserved state: ${config.state}`);
     }
+  }
+
+  /**
+   * Transform NAT Gateway configuration
+   */
+  private static transformNatGatewayConfiguration(
+    config: Record<string, any>,
+    frontendNode: FrontendNode,
+    containerMapping: Map<string, FrontendNode>,
+    transformations: string[]
+  ): void {
+    // Map awsNatGatewayId to name if needed
+    if (config.awsNatGatewayId && !config.name) {
+      config.name = config.awsNatGatewayId;
+      transformations.push('awsNatGatewayId → name');
+    }
+
+    // Handle natGatewayType → connectivity_type (CRITICAL FIX)
+    if (config.natGatewayType && !config.connectivity_type) {
+      config.connectivity_type = config.natGatewayType;
+      transformations.push(`natGatewayType → connectivity_type: ${config.natGatewayType}`);
+    }
+    if (config.natGatewayType) delete config.natGatewayType;
+
+    // Find subnet reference (NAT Gateway requires public subnet)
+    if (!config.subnet_id) {
+      // First check for explicit awsPublicSubnetId in config
+      if (config.awsPublicSubnetId && config.awsPublicSubnetId !== "default-subnet") {
+        config.subnet_id = config.awsPublicSubnetId;
+        transformations.push(`Added subnet reference from awsPublicSubnetId: ${config.awsPublicSubnetId}`);
+      } else if (config.awsSubnetId && config.awsSubnetId !== "default-subnet") {
+        config.subnet_id = config.awsSubnetId;
+        transformations.push(`Added subnet reference from awsSubnetId: ${config.awsSubnetId}`);
+      } else if (frontendNode.parentId) {
+        // Try to find public subnet from parent chain
+        let currentParent: string | undefined = frontendNode.parentId;
+        let subnet: FrontendNode | undefined;
+
+        // Walk up the parent chain to find public subnet
+        while (currentParent && !subnet) {
+          const parent = containerMapping.get(currentParent);
+          if (parent) {
+            if (parent.resourceType === 'aws-public-subnet' ||
+                (parent.resourceType === 'aws-subnet' && parent.configuration?.mapPublicIpOnLaunch === true)) {
+              subnet = parent;
+            } else {
+              currentParent = parent.parentId;
+            }
+          } else {
+            break;
+          }
+        }
+
+        if (subnet) {
+          config.subnet_id = subnet.id;
+          transformations.push(`Added subnet reference from parent chain: ${subnet.id}`);
+        }
+      }
+    }
+
+    // Handle Elastic IP allocation
+    if (config.allocationId && !config.allocation_id) {
+      config.allocation_id = config.allocationId;
+      transformations.push('allocationId → allocation_id');
+    }
+    if (config.allocationId) delete config.allocationId;
+
+    // Handle private IP
+    if (config.privateIp && !config.private_ip) {
+      config.private_ip = config.privateIp;
+      transformations.push('privateIp → private_ip');
+    }
+    if (config.privateIp) delete config.privateIp;
+
+    // Handle createEip → create_eip
+    if (config.createEip !== undefined && config.create_eip === undefined) {
+      config.create_eip = config.createEip;
+      transformations.push('createEip → create_eip');
+    }
+    if (config.createEip !== undefined) delete config.createEip;
+
+    // Set default connectivity_type if not specified
+    if (!config.connectivity_type) {
+      config.connectivity_type = 'public';
+      transformations.push('Set default connectivity_type: public');
+    }
+
+    // Set default create_eip if connectivity is public and no allocation_id
+    if (config.connectivity_type === 'public' && !config.allocation_id && config.create_eip === undefined) {
+      config.create_eip = true;
+      transformations.push('Set default create_eip: true for public NAT Gateway');
+    }
+
+    // Remove unsupported advanced fields
+    const removedFields = [
+      'awsNatGatewayId',
+      'awsSubnetId',
+      'awsPublicSubnetId',
+      'secondaryAllocationIds',
+      'secondaryPrivateIpAddressCount',
+      'secondaryPrivateIpAddresses',
+      'state',
+      'description'
+    ];
+
+    removedFields.forEach(field => {
+      if (config[field]) {
+        delete config[field];
+        transformations.push(`Removed unsupported field: ${field}`);
+      }
+    });
   }
 
   /**

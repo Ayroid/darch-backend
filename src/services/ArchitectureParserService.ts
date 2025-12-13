@@ -175,6 +175,9 @@ export class ArchitectureParserService {
 			"internet-gateway": "networking/internet-gateway",
 			"aws-internet-gateway": "networking/internet-gateway",
 			igw: "networking/internet-gateway",
+			"nat-gateway": "networking/nat-gateway",
+			"aws-nat-gateway": "networking/nat-gateway",
+			ngw: "networking/nat-gateway",
 			"route-table": "networking/route-table",
 			"aws-route-table": "networking/route-table",
 			rt: "networking/route-table",
@@ -299,6 +302,19 @@ export class ArchitectureParserService {
 					}
 					break;
 
+				case "networking/nat-gateway":
+					// Add subnet dependency if not explicit
+					if (!node.configuration.subnet_id) {
+						const natSubnet = nodes.find(
+							(n) => n.terraformModule === "networking/subnet" &&
+							(n.configuration.map_public_ip_on_launch === true || n.type === "aws-public-subnet")
+						);
+						if (natSubnet && !node.dependencies.includes(natSubnet.id)) {
+							node.dependencies.push(natSubnet.id);
+						}
+					}
+					break;
+
 				case "networking/route-table":
 					// Only add VPC dependency if route table doesn't have explicit vpc_id
 					if (!node.configuration.vpc_id) {
@@ -324,6 +340,18 @@ export class ArchitectureParserService {
 									);
 									if (igw && !node.dependencies.includes(igw.id)) {
 										node.dependencies.push(igw.id);
+									}
+								}
+								// Add NAT Gateway dependency if route uses NAT
+								if (route.nat_gateway_id) {
+									const nat = nodes.find(
+										(n) =>
+											n.terraformModule === "networking/nat-gateway" &&
+											(n.configuration.name === route.nat_gateway_id ||
+												n.id === route.nat_gateway_id)
+									);
+									if (nat && !node.dependencies.includes(nat.id)) {
+										node.dependencies.push(nat.id);
 									}
 								}
 							});

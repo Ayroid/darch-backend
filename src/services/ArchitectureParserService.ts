@@ -260,7 +260,7 @@ export class ArchitectureParserService {
 		for (const connection of connections) {
 			const sourceNode = nodes.find((n) => n.id === connection.sourceId);
 			const targetNode = nodes.find((n) => n.id === connection.targetId);
-			
+
 			if (!sourceNode || !targetNode) continue;
 
 			// Determine correct dependency direction based on resource types
@@ -273,11 +273,21 @@ export class ArchitectureParserService {
 				// Source depends on target
 				if (!sourceNode.dependencies.includes(connection.targetId)) {
 					sourceNode.dependencies.push(connection.targetId);
+					logger.architecture(
+						LogLevel.DEBUG,
+						`Connection: ${sourceNode.id} (${sourceNode.resourceType}) depends on ${targetNode.id} (${targetNode.resourceType})`,
+						{ connectionId: connection.id }
+					);
 				}
 			} else {
 				// Target depends on source (default behavior)
 				if (!targetNode.dependencies.includes(connection.sourceId)) {
 					targetNode.dependencies.push(connection.sourceId);
+					logger.architecture(
+						LogLevel.DEBUG,
+						`Connection: ${targetNode.id} (${targetNode.resourceType}) depends on ${sourceNode.id} (${sourceNode.resourceType})`,
+						{ connectionId: connection.id }
+					);
 				}
 			}
 		}

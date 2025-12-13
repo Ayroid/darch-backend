@@ -117,8 +117,8 @@ export class ArchitectureParserService {
 				resourceType: node.resourceType,
 				nodeType: node.nodeType,
 				configuration: this.normalizeConfiguration(node.configuration || {}),
-				position: node.position || { x: 0, y: 0 },
-				dimensions: node.dimensions || { width: 100, height: 50 },
+				position: { x: 0, y: 0 }, // Default position (not needed for backend)
+				dimensions: { width: 100, height: 50 }, // Default dimensions (not needed for backend)
 				parentId: node.parentId,
 				children: nodes.filter((n) => n.parentId === node.id).map((n) => n.id),
 				dependencies: [], // Will be populated by buildDependencyGraph

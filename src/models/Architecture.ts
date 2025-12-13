@@ -18,9 +18,6 @@ export interface ArchitectureNode {
   nodeType: 'awsService' | 'awsContainer';
   resourceType: string;
   name: string;
-  icon: string;
-  position: { x: number; y: number };
-  dimensions?: { width: number; height: number };
   configuration: Record<string, any>;
   parentId?: string;
 }

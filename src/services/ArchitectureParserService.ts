@@ -256,19 +256,74 @@ export class ArchitectureParserService {
 			}
 		}
 
-		// Add connection-based dependencies
+		// Add connection-based dependencies with smart direction handling
 		for (const connection of connections) {
+			const sourceNode = nodes.find((n) => n.id === connection.sourceId);
 			const targetNode = nodes.find((n) => n.id === connection.targetId);
-			if (
-				targetNode &&
-				!targetNode.dependencies.includes(connection.sourceId)
-			) {
-				targetNode.dependencies.push(connection.sourceId);
+			
+			if (!sourceNode || !targetNode) continue;
+
+			// Determine correct dependency direction based on resource types
+			const dependencyDirection = this.determineConnectionDependency(
+				sourceNode,
+				targetNode
+			);
+
+			if (dependencyDirection === 'source-depends-on-target') {
+				// Source depends on target
+				if (!sourceNode.dependencies.includes(connection.targetId)) {
+					sourceNode.dependencies.push(connection.targetId);
+				}
+			} else {
+				// Target depends on source (default behavior)
+				if (!targetNode.dependencies.includes(connection.sourceId)) {
+					targetNode.dependencies.push(connection.sourceId);
+				}
 			}
 		}
 
 		// Add implicit dependencies based on resource types
 		this.addImplicitDependencies(nodes);
+	}
+
+	/**
+	 * Determine the correct dependency direction for a connection based on resource types
+	 * Returns 'source-depends-on-target' or 'target-depends-on-source'
+	 */
+	private static determineConnectionDependency(
+		sourceNode: ParsedNode,
+		targetNode: ParsedNode
+	): 'source-depends-on-target' | 'target-depends-on-source' {
+		// Route tables connecting to Internet Gateways or NAT Gateways
+		// The route table depends on the gateway, not vice versa
+		if (sourceNode.terraformModule === 'networking/route-table') {
+			if (
+				targetNode.terraformModule === 'networking/internet-gateway' ||
+				targetNode.terraformModule === 'networking/nat-gateway'
+			) {
+				return 'source-depends-on-target';
+			}
+		}
+
+		// Route tables connecting to subnets (for associations)
+		// The subnet doesn't depend on the route table, but the route table needs to exist
+		// This is an association, not a dependency - skip it
+		if (sourceNode.terraformModule === 'networking/route-table' &&
+		    targetNode.terraformModule === 'networking/subnet') {
+			// This will be handled through explicit configuration
+			// Return default to maintain existing behavior but skip in addImplicitDependencies
+			return 'target-depends-on-source';
+		}
+
+		// EC2 instances connecting to security groups
+		// The instance depends on the security group
+		if (sourceNode.terraformModule === 'compute/ec2' &&
+		    targetNode.terraformModule === 'security/security-group') {
+			return 'source-depends-on-target';
+		}
+
+		// Default: target depends on source (original behavior)
+		return 'target-depends-on-source';
 	}
 
 	/**

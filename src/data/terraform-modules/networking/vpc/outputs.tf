@@ -37,13 +37,3 @@ output "vpc_owner_id" {
   description = "The ID of the AWS account that owns the VPC"
   value       = aws_vpc.this.owner_id
 }
-
-output "internet_gateway_id" {
-  description = "The ID of the Internet Gateway"
-  value       = try(aws_internet_gateway.this[0].id, null)
-}
-
-output "internet_gateway_arn" {
-  description = "The ARN of the Internet Gateway"
-  value       = try(aws_internet_gateway.this[0].arn, null)
-}

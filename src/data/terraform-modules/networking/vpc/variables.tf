@@ -38,12 +38,6 @@ variable "instance_tenancy" {
   }
 }
 
-variable "create_internet_gateway" {
-  description = "Controls if an Internet Gateway is created for public subnets and the related routes that connect them"
-  type        = bool
-  default     = true
-}
-
 variable "tags" {
   description = "A map of tags to assign to the resource"
   type        = map(string)

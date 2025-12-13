@@ -14,15 +14,3 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
-
-variable "create_default_route" {
-  description = "Whether to create a default route (0.0.0.0/0) to the Internet Gateway"
-  type        = bool
-  default     = false
-}
-
-variable "route_table_id" {
-  description = "Route table ID to add the default route to (required if create_default_route is true)"
-  type        = string
-  default     = ""
-}

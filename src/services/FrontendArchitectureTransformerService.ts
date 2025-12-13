@@ -1056,7 +1056,14 @@ export class FrontendArchitectureTransformerService {
       transformations.push('awsNatGatewayId → name');
     }
 
-    // Handle natGatewayType → connectivity_type (CRITICAL FIX)
+    // Handle connectivityType → connectivity_type (from Phase 4 frontend changes)
+    if (config.connectivityType && !config.connectivity_type) {
+      config.connectivity_type = config.connectivityType;
+      transformations.push(`connectivityType → connectivity_type: ${config.connectivityType}`);
+    }
+    if (config.connectivityType) delete config.connectivityType;
+
+    // Handle legacy natGatewayType → connectivity_type (backward compatibility)
     if (config.natGatewayType && !config.connectivity_type) {
       config.connectivity_type = config.natGatewayType;
       transformations.push(`natGatewayType → connectivity_type: ${config.natGatewayType}`);
@@ -1081,8 +1088,9 @@ export class FrontendArchitectureTransformerService {
         while (currentParent && !subnet) {
           const parent = containerMapping.get(currentParent);
           if (parent) {
+            const config = parent.configuration as any;
             if (parent.resourceType === 'aws-public-subnet' ||
-                (parent.resourceType === 'aws-subnet' && parent.configuration?.mapPublicIpOnLaunch === true)) {
+                (parent.resourceType === 'aws-subnet' && config?.mapPublicIpOnLaunch === true)) {
               subnet = parent;
             } else {
               currentParent = parent.parentId;

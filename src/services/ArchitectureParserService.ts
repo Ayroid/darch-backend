@@ -307,7 +307,7 @@ export class ArchitectureParserService {
 					if (!node.configuration.subnet_id) {
 						const natSubnet = nodes.find(
 							(n) => n.terraformModule === "networking/subnet" &&
-							(n.configuration.map_public_ip_on_launch === true || n.type === "aws-public-subnet")
+							(n.configuration.map_public_ip_on_launch === true || n.resourceType === "aws-public-subnet")
 						);
 						if (natSubnet && !node.dependencies.includes(natSubnet.id)) {
 							node.dependencies.push(natSubnet.id);

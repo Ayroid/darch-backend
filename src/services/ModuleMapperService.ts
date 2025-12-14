@@ -202,8 +202,10 @@ export class ModuleMapperService {
     const config = node.configuration;
 
     // Direct mapping from configuration
-    // Skip direct mapping for routes and associations as they need special handling
-    if (config[varName] !== undefined && varName !== 'routes' && varName !== 'associations') {
+    // Skip direct mapping for routes, associations, and cross-module references
+    // vpc_id, subnet_id, security_group_ids, internet_gateway_id, nat_gateway_id need special handling
+    const crossModuleReferenceVars = ['routes', 'associations', 'vpc_id', 'subnet_id', 'security_group_ids', 'internet_gateway_id', 'nat_gateway_id'];
+    if (config[varName] !== undefined && !crossModuleReferenceVars.includes(varName)) {
       return config[varName];
     }
 
@@ -236,6 +238,26 @@ export class ModuleMapperService {
       case 'instance_type':
         return config.instance_type || 't3.micro';
 
+      case 'ami_id':
+        // Validate AMI ID format - must start with 'ami-' followed by alphanumeric
+        // If invalid or not provided, return null to use the data source for latest Amazon Linux AMI
+        const amiId = config.ami_id || config.amiId;
+        if (amiId && typeof amiId === 'string') {
+          // Check if AMI ID has valid format: ami-[8 or 17 hex characters]
+          const amiIdPattern = /^ami-[0-9a-f]{8}$|^ami-[0-9a-f]{17}$/;
+          if (amiIdPattern.test(amiId)) {
+            return amiId;
+          }
+          // Invalid AMI ID format - log warning and return null to use data source
+          logger.info(`Invalid AMI ID format: ${amiId}. Will use latest Amazon Linux AMI instead.`, {
+            category: LogCategory.TERRAFORM,
+            nodeId: node.id,
+            nodeName: node.name,
+            providedAmiId: amiId
+          });
+        }
+        return null; // Let the EC2 module use the data source for latest AMI
+
       case 'bucket_name':
         return config.bucket_name || this.generateUniqueBucketName(node.name);
 
@@ -244,6 +266,41 @@ export class ModuleMapperService {
 
       case 'map_public_ip_on_launch':
         return this.inferSubnetType(node) === 'public';
+
+      case 'create_route_table':
+        // If there's a standalone route-table module in the architecture that will manage this subnet,
+        // set create_route_table to false to avoid conflicts
+        if (allNodes) {
+          const hasStandaloneRouteTable = allNodes.some(n =>
+            (n.resourceType === 'route-table' || n.resourceType === 'aws-route-table') &&
+            (n.dependencies?.includes(node.id) ||
+             n.configuration?.awsSubnetId === node.id ||
+             n.configuration?.associations?.some?.((a: any) => a.subnet_id === node.id))
+          );
+          if (hasStandaloneRouteTable) {
+            return false;
+          }
+        }
+        // Default to true if no standalone route table manages this subnet
+        return config.create_route_table !== undefined ? config.create_route_table : true;
+
+      case 'create_igw_route':
+        // Only create IGW route if subnet is managing its own route table
+        const shouldCreateOwnRT = allNodes ? !allNodes.some(n =>
+          (n.resourceType === 'route-table' || n.resourceType === 'aws-route-table') &&
+          (n.dependencies?.includes(node.id) ||
+           n.configuration?.awsSubnetId === node.id)
+        ) : true;
+        return shouldCreateOwnRT && (config.create_igw_route !== undefined ? config.create_igw_route : true);
+
+      case 'create_nat_route':
+        // Only create NAT route if subnet is managing its own route table
+        const shouldCreateOwnNatRT = allNodes ? !allNodes.some(n =>
+          (n.resourceType === 'route-table' || n.resourceType === 'aws-route-table') &&
+          (n.dependencies?.includes(node.id) ||
+           n.configuration?.awsSubnetId === node.id)
+        ) : true;
+        return shouldCreateOwnNatRT && (config.create_nat_route !== undefined ? config.create_nat_route : true);
 
       case 'internet_gateway_id':
         // Return placeholder for cross-module reference resolution

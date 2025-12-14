@@ -1384,7 +1384,7 @@ export class FrontendArchitectureTransformerService {
 			}
 			config.routes["default_route"] = {
 				destination_cidr_block: "0.0.0.0/0",
-				gateway_id: config.awsInternetGatewayId,
+				gateway_id: `__MODULE_REF__${config.awsInternetGatewayId}__internet_gateway_id`,
 			};
 			transformations.push("Created default route from awsInternetGatewayId");
 		}
@@ -1416,7 +1416,7 @@ export class FrontendArchitectureTransformerService {
 				config.associations = {};
 			}
 			config.associations["subnet_association"] = {
-				subnet_id: config.awsSubnetId,
+				subnet_id: `__MODULE_REF__${config.awsSubnetId}__subnet_id`,
 			};
 			transformations.push("Created subnet association from awsSubnetId");
 		}

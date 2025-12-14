@@ -21,6 +21,7 @@ export class ValidationUtils {
     const errors: string[] = [];
 
     if (!data) {
+      console.log('🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟');
       errors.push('Architecture data is required');
       return { isValid: false, errors };
     }

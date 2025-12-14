@@ -316,13 +316,11 @@ export class ArchitectureParserService {
 		}
 
 		// Route tables connecting to subnets (for associations)
-		// The subnet doesn't depend on the route table, but the route table needs to exist
-		// This is an association, not a dependency - skip it
+		// The route table depends on the subnet (needs subnet_id for associations)
 		if (sourceNode.terraformModule === 'networking/route-table' &&
 		    targetNode.terraformModule === 'networking/subnet') {
-			// This will be handled through explicit configuration
-			// Return default to maintain existing behavior but skip in addImplicitDependencies
-			return 'target-depends-on-source';
+			// Route table needs subnet to exist first to reference subnet_id
+			return 'source-depends-on-target';
 		}
 
 		// EC2 instances connecting to security groups

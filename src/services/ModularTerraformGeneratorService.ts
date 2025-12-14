@@ -186,6 +186,10 @@ locals {
           resolvedValue = [];
         }
       }
+      // Resolve map/object placeholders for routes and associations
+      else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+        resolvedValue = this.resolveMapPlaceholders(value, module, allModules, nodes);
+      }
 
       const formattedValue = this.formatTerraformValue(resolvedValue);
       block += `  ${key.padEnd(20)} = ${formattedValue}\n`;
@@ -567,6 +571,78 @@ locals {
     }
 
     return null;
+  }
+
+  /**
+   * Recursively resolve __MODULE_REF__ placeholders within map/object structures
+   * Used for routes and associations in route-table modules
+   */
+  private static resolveMapPlaceholders(
+    mapValue: Record<string, any>,
+    currentModule: GeneratedModule,
+    allModules: GeneratedModule[],
+    nodes: any[]
+  ): Record<string, any> {
+    const resolvedMap: Record<string, any> = {};
+
+    for (const [key, value] of Object.entries(mapValue)) {
+      if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+        // Recursively resolve nested objects
+        const resolvedNested: Record<string, any> = {};
+
+        for (const [nestedKey, nestedValue] of Object.entries(value)) {
+          if (typeof nestedValue === 'string' && nestedValue.startsWith('__MODULE_REF__')) {
+            // Extract the node ID and output name from the placeholder
+            // Format: __MODULE_REF__<node-id>__<output-name>
+            const match = nestedValue.match(/^__MODULE_REF__(.+)__(.+)$/);
+            if (match) {
+              const [, nodeId, outputName] = match;
+              const targetNode = nodes.find(n => n.id === nodeId);
+
+              if (targetNode) {
+                const targetModuleName = this.generateModuleName(targetNode);
+                resolvedNested[nestedKey] = `module.${targetModuleName}.${outputName}`;
+                logger.terraform(LogLevel.DEBUG, `Resolved map placeholder in ${currentModule.name}.${key}.${nestedKey}`, {
+                  moduleName: currentModule.name,
+                  mapKey: key,
+                  nestedKey,
+                  nodeId,
+                  outputName,
+                  resolvedTo: `module.${targetModuleName}.${outputName}`
+                });
+              } else {
+                logger.terraform(LogLevel.WARN, `Failed to resolve map placeholder: node ${nodeId} not found`, {
+                  moduleName: currentModule.name,
+                  mapKey: key,
+                  nestedKey,
+                  nodeId,
+                  placeholder: nestedValue
+                });
+                resolvedNested[nestedKey] = nestedValue;
+              }
+            } else {
+              logger.terraform(LogLevel.WARN, `Invalid placeholder format in map: ${nestedValue}`, {
+                moduleName: currentModule.name,
+                mapKey: key,
+                nestedKey,
+                placeholder: nestedValue
+              });
+              resolvedNested[nestedKey] = nestedValue;
+            }
+          } else {
+            // Keep non-placeholder values as-is
+            resolvedNested[nestedKey] = nestedValue;
+          }
+        }
+
+        resolvedMap[key] = resolvedNested;
+      } else {
+        // Keep non-object values as-is
+        resolvedMap[key] = value;
+      }
+    }
+
+    return resolvedMap;
   }
 
   /**

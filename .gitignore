@@ -3,3 +3,8 @@ node_modules/
 dist/
 src/output/
 logs/
+/docs/terraform_modules/.terraform/
+/docs/terraform_modules/terraform.tfstate
+/docs/terraform_modules/terraform.tfstate.backup
+/docs/terraform_modules/.terraform.lock.hcl
+/docs/terraform_modules/*.tfvars

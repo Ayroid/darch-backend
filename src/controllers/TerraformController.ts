@@ -1418,16 +1418,16 @@ export class TerraformController {
 		// Check for frontend format structure
 		return !!(
 			data.metadata &&
-			data.nodes &&
-			Array.isArray(data.nodes) &&
-			data.nodes.length > 0 &&
-			data.nodes.some(
-				(node: any) =>
-					node.nodeType &&
-					(node.nodeType === "awsService" ||
-						node.nodeType === "awsContainer") &&
-					node.resourceType &&
-					node.resourceType.startsWith("aws-")
+			data.resources &&
+			Array.isArray(data.resources) &&
+			data.resources.length > 0 &&
+			data.resources.some(
+				(resource: any) =>
+					resource.nodeType &&
+					(resource.nodeType === "awsService" ||
+						resource.nodeType === "awsContainer") &&
+					resource.resourceType &&
+					resource.resourceType.startsWith("aws-")
 			)
 		);
 	}

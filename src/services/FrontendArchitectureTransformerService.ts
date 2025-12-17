@@ -49,7 +49,7 @@ export interface FrontendNode {
 
 export interface FrontendArchitectureData {
 	metadata: FrontendArchitectureMetadata;
-	nodes: FrontendNode[];
+	resources?: FrontendNode[];
 	connections: FrontendNodeConnection[];
 	variables?: {
 		[key: string]: {
@@ -345,8 +345,10 @@ export class FrontendArchitectureTransformerService {
 	): TransformationResult {
 		const startTime = Date.now();
 
+		const frontendNodes = frontendData.resources || [];
+
 		logger.architecture(LogLevel.INFO, "Transforming frontend architecture", {
-			nodes: frontendData.nodes?.length || 0,
+			nodes: frontendNodes.length,
 			connections: frontendData.connections?.length || 0,
 		});
 
@@ -358,12 +360,12 @@ export class FrontendArchitectureTransformerService {
 			// Transform components
 			const transformedMetadata = this.transformMetadata(
 				frontendData.metadata,
-				frontendData.nodes
+				frontendNodes
 			);
 
 			// Transform nodes
 			const { transformedNodes, nodeWarnings, nodeMappings } =
-				this.transformNodes(frontendData.nodes, warnings, errors);
+				this.transformNodes(frontendNodes, warnings, errors);
 			warnings.push(...nodeWarnings);
 			mappings.push(...nodeMappings);
 
@@ -1623,22 +1625,23 @@ export class FrontendArchitectureTransformerService {
 			}
 		}
 
-		if (!data.nodes || !Array.isArray(data.nodes)) {
-			errors.push("Nodes array is required");
-		} else if (data.nodes.length === 0) {
-			errors.push("At least one node is required");
+		// Check resources
+		if (!data.resources || !Array.isArray(data.resources)) {
+			errors.push("Resources array is required");
+		} else if (data.resources.length === 0) {
+			errors.push("At least one resource is required");
 		}
 
-		// Validate individual nodes
-		for (const [index, node] of data.nodes.entries()) {
-			if (!node.id) {
-				errors.push(`Node at index ${index} is missing id`);
+		// Validate individual resources
+		for (const [index, resource] of (data.resources || []).entries()) {
+			if (!resource.id) {
+				errors.push(`Resource at index ${index} is missing id`);
 			}
-			if (!node.resourceType) {
-				errors.push(`Node ${node.id || index} is missing resourceType`);
+			if (!resource.resourceType) {
+				errors.push(`Resource ${resource.id || index} is missing resourceType`);
 			}
-			if (!node.nodeType) {
-				errors.push(`Node ${node.id || index} is missing nodeType`);
+			if (!resource.nodeType) {
+				errors.push(`Resource ${resource.id || index} is missing nodeType`);
 			}
 		}
 

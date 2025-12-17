@@ -21,7 +21,6 @@ export class ValidationUtils {
     const errors: string[] = [];
 
     if (!data) {
-      console.log('🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟');
       errors.push('Architecture data is required');
       return { isValid: false, errors };
     }
@@ -35,14 +34,17 @@ export class ValidationUtils {
       errors.push(...missingMetadata.map(field => `metadata.${field} is required`));
     }
 
-    // Check nodes
-    if (!data.nodes || !Array.isArray(data.nodes)) {
-      errors.push('nodes must be an array');
+    // Check resources
+    if (!data.resources || !Array.isArray(data.resources)) {
+      errors.push('resources must be an array');
+    } else if (data.resources.length === 0) {
+      errors.push('At least one resource is required');
     } else {
-      data.nodes.forEach((node: any, index: number) => {
-        const nodeFields = ['id', 'nodeType', 'resourceType', 'name', 'position'];
-        const missingNodeFields = this.validateRequiredFields(node, nodeFields);
-        errors.push(...missingNodeFields.map(field => `nodes[${index}].${field} is required`));
+      data.resources.forEach((item: any, index: number) => {
+        // Only validate essential backend fields, not frontend-specific fields like 'position'
+        const itemFields = ['id', 'resourceType', 'name'];
+        const missingItemFields = this.validateRequiredFields(item, itemFields);
+        errors.push(...missingItemFields.map(field => `resources[${index}].${field} is required`));
       });
     }
 

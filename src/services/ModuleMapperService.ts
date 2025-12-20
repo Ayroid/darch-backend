@@ -1,4 +1,4 @@
-import { ParsedNode, ParsedArchitecture, ArchitectureMetadata } from './ArchitectureParserService.js';
+import { ParsedNode, ParsedArchitecture, ParsedArchitectureMetadata } from './ArchitectureParserService.js';
 import { ModuleRegistryService } from './ModuleRegistryService.js';
 import { TerraformModule, ModuleConfiguration, GeneratedModule } from '../models/TerraformModule.js';
 import { logger, LogCategory, LogLevel } from '../utils/Logger.js';
@@ -107,7 +107,7 @@ export class ModuleMapperService {
    */
   private static async mapNodeToModule(
     node: ParsedNode,
-    metadata: ArchitectureMetadata,
+    metadata: ParsedArchitectureMetadata,
     allNodes?: ParsedNode[]
   ): Promise<GeneratedModule | null> {
     const [category, moduleName] = node.terraformModule.split('/');
@@ -164,7 +164,7 @@ export class ModuleMapperService {
   private static async mapConfigurationToVariables(
     node: ParsedNode,
     moduleDefinition: TerraformModule,
-    metadata: ArchitectureMetadata,
+    metadata: ParsedArchitectureMetadata,
     allNodes?: ParsedNode[]
   ): Promise<Record<string, any>> {
     const variables: Record<string, any> = {};
@@ -195,7 +195,7 @@ export class ModuleMapperService {
   private static mapVariableValue(
     node: ParsedNode,
     moduleVar: any,
-    metadata: ArchitectureMetadata,
+    metadata: ParsedArchitectureMetadata,
     allNodes?: ParsedNode[]
   ): any {
     const { name: varName } = moduleVar;
@@ -239,16 +239,38 @@ export class ModuleMapperService {
         return config.instance_type || 't3.micro';
 
       case 'ami_id':
-        // Validate AMI ID format - must start with 'ami-' followed by alphanumeric
-        // If invalid or not provided, return null to use the data source for latest Amazon Linux AMI
+        // Handle AMI ID - use data source for automatic lookup if not provided or if "latest"
         const amiId = config.ami_id || config.amiId;
-        if (amiId && typeof amiId === 'string') {
-          // Check if AMI ID has valid format: ami-[8 or 17 hex characters]
+
+        // If no AMI ID provided or empty string, use data source
+        if (!amiId || amiId === '') {
+          return null;
+        }
+
+        // If "latest" placeholder, use data source for automatic lookup
+        if (typeof amiId === 'string' && amiId.toLowerCase() === 'latest') {
+          logger.info(`Using automatic AMI lookup for "latest" value`, {
+            category: LogCategory.TERRAFORM,
+            nodeId: node.id,
+            nodeName: node.name
+          });
+          return null;
+        }
+
+        // Validate AMI ID format: ami-[8 or 17 hex characters]
+        if (typeof amiId === 'string') {
           const amiIdPattern = /^ami-[0-9a-f]{8}$|^ami-[0-9a-f]{17}$/;
           if (amiIdPattern.test(amiId)) {
+            logger.info(`Using provided AMI ID: ${amiId}. Ensure this AMI exists in region ${metadata.region}`, {
+              category: LogCategory.TERRAFORM,
+              nodeId: node.id,
+              nodeName: node.name,
+              providedAmiId: amiId,
+              region: metadata.region
+            });
             return amiId;
           }
-          // Invalid AMI ID format - log warning and return null to use data source
+          // Invalid AMI ID format - log warning and use data source
           logger.info(`Invalid AMI ID format: ${amiId}. Will use latest Amazon Linux AMI instead.`, {
             category: LogCategory.TERRAFORM,
             nodeId: node.id,
@@ -256,7 +278,7 @@ export class ModuleMapperService {
             providedAmiId: amiId
           });
         }
-        return null; // Let the EC2 module use the data source for latest AMI
+        return null; // Use data source for latest AMI
 
       case 'bucket_name':
         return config.bucket_name || this.generateUniqueBucketName(node.name);

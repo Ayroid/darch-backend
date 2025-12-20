@@ -22,7 +22,7 @@ variable "instance_type" {
 }
 
 variable "ami_id" {
-  description = "The AMI ID to use for the instance"
+  description = "The AMI ID to use for the instance. If not provided or null, will automatically use the latest Amazon Linux 2023 AMI for the region."
   type        = string
   default     = null
 }

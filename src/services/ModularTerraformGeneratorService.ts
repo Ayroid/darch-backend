@@ -1,6 +1,6 @@
 import { GeneratedModule } from '../models/TerraformModule.js';
 import { ModuleDependency, ModuleMappingResult } from './ModuleMapperService.js';
-import { ArchitectureMetadata } from './ArchitectureParserService.js';
+import { ParsedArchitectureMetadata } from './ArchitectureParserService.js';
 import { logger, LogCategory, LogLevel } from '../utils/Logger.js';
 
 export interface TerraformGenerationResult {
@@ -25,7 +25,7 @@ export class ModularTerraformGeneratorService {
    */
   static generateTerraformConfiguration(
     mappingResult: ModuleMappingResult,
-    metadata: ArchitectureMetadata,
+    metadata: ParsedArchitectureMetadata,
     projectName: string = 'infrastructure'
   ): TerraformGenerationResult {
     logger.terraform(LogLevel.INFO, '🔄 Generating modular Terraform configuration', {
@@ -95,7 +95,7 @@ export class ModularTerraformGeneratorService {
   private static generateMainTf(
     modules: GeneratedModule[],
     dependencies: ModuleDependency[],
-    metadata: ArchitectureMetadata,
+    metadata: ParsedArchitectureMetadata,
     nodes: any[] = []
   ): string {
     const dependencyMap = new Map(dependencies.map(d => [d.moduleId, d]));
@@ -125,7 +125,7 @@ export class ModularTerraformGeneratorService {
   /**
    * Generate locals block
    */
-  private static generateLocalsBlock(metadata: ArchitectureMetadata): string {
+  private static generateLocalsBlock(metadata: ParsedArchitectureMetadata): string {
     return `
 locals {
   common_tags = {
@@ -158,19 +158,25 @@ locals {
     for (const [key, value] of sortedVars) {
       let resolvedValue = value;
 
+      console.log(`[MODULE_BLOCK] Processing variable ${key} for module ${module.name}:`, { originalValue: value, type: typeof value });
+
       // Resolve cross-module references for null values
       if (value === null) {
         resolvedValue = this.resolveCrossModuleReference(key, module, allModules, nodes);
+        console.log(`[MODULE_BLOCK] Resolved null value for ${key}:`, resolvedValue);
       }
       // Resolve placeholders for cross-module references
       else if (typeof value === 'string' && value.startsWith('__MODULE_REF__')) {
+        console.log(`[MODULE_BLOCK] Found placeholder for ${key}:`, value);
         resolvedValue = this.resolveCrossModuleReference(key, module, allModules, nodes);
+        console.log(`[MODULE_BLOCK] Resolved placeholder for ${key}:`, resolvedValue);
         if (!resolvedValue) {
           logger.terraform(LogLevel.WARN, `Failed to resolve placeholder for ${key} in module ${module.name}`, {
             variableName: key,
             moduleName: module.name,
             placeholder: value
           });
+          console.log(`[MODULE_BLOCK] ❌ Failed to resolve ${key}, setting to null`);
           resolvedValue = null;
         }
       }
@@ -191,7 +197,21 @@ locals {
         resolvedValue = this.resolveMapPlaceholders(value, module, allModules, nodes);
       }
 
+      // Skip variables that couldn't be resolved (null values)
+      // For required variables like vpc_id, subnet_id, this will cause Terraform to fail
+      // with a clear error message about the missing variable
+      if (resolvedValue === null || resolvedValue === undefined) {
+        console.log(`[MODULE_BLOCK] ⚠️  Skipping variable ${key} - value is null/undefined`);
+        logger.terraform(LogLevel.ERROR, `Skipping variable ${key} for module ${module.name} - value could not be resolved`, {
+          variableName: key,
+          moduleName: module.name,
+          originalValue: value
+        });
+        continue; // Skip this variable entirely
+      }
+
       const formattedValue = this.formatTerraformValue(resolvedValue);
+      console.log(`[MODULE_BLOCK] Adding variable ${key} = ${formattedValue}`);
       block += `  ${key.padEnd(20)} = ${formattedValue}\n`;
     }
 
@@ -218,6 +238,10 @@ locals {
     allModules: GeneratedModule[],
     nodes: any[]
   ): string | string[] | null {
+    console.log(`[RESOLVE_REF] Resolving ${variableName} for module ${currentModule.name}`);
+    console.log(`[RESOLVE_REF] Total nodes available:`, nodes.length);
+    console.log(`[RESOLVE_REF] Node IDs:`, nodes.map(n => `${n.id} (${n.resourceType})`));
+    
     // Find the current node that corresponds to this module
     const currentNode = nodes.find(node => {
       const moduleName = this.generateModuleName(node);
@@ -225,6 +249,7 @@ locals {
     });
 
     if (!currentNode) {
+      console.log(`[RESOLVE_REF] ❌ Current node not found for module ${currentModule.name}`);
       logger.terraform(LogLevel.WARN, `Cannot resolve ${variableName}: current node not found for module ${currentModule.name}`, {
         variableName,
         moduleName: currentModule.name
@@ -234,10 +259,19 @@ locals {
 
     switch (variableName) {
       case 'vpc_id':
+        console.log('[VPC_RESOLUTION] Resolving vpc_id for module:', currentModule.name);
+        console.log('[VPC_RESOLUTION] Current node:', {
+          id: currentNode.id,
+          resourceType: currentNode.resourceType,
+          parentId: currentNode.parentId,
+          config_vpc_id: currentNode.configuration?.vpc_id
+        });
+        
         // Find the VPC this resource belongs to
         const vpcNode = this.findVpcForNode(currentNode, nodes);
         if (vpcNode) {
           const vpcModuleName = this.generateModuleName(vpcNode);
+          console.log('[VPC_RESOLUTION] ✓ Found VPC via hierarchy:', vpcModuleName);
           logger.terraform(LogLevel.DEBUG, `Resolved vpc_id for ${currentModule.name} to ${vpcModuleName}`, {
             variableName,
             moduleName: currentModule.name,
@@ -245,24 +279,39 @@ locals {
           });
           return `module.${vpcModuleName}.vpc_id`;
         }
+        
+        console.log('[VPC_RESOLUTION] No VPC found via hierarchy, trying config reference');
         // If no VPC found in hierarchy, try to find by ID from configuration
         const vpcId = currentNode.configuration?.vpc_id || currentNode.configuration?.awsVpcId;
+        console.log('[VPC_RESOLUTION] VPC ID from config:', vpcId);
+        
         if (vpcId && typeof vpcId === 'string') {
+          console.log('[VPC_RESOLUTION] Searching for node with ID:', vpcId);
+          console.log('[VPC_RESOLUTION] Available node IDs:', nodes.map(n => n.id));
+          
           const vpcNodeById = nodes.find(n => n.id === vpcId);
           if (vpcNodeById) {
             const vpcModuleName = this.generateModuleName(vpcNodeById);
+            console.log('[VPC_RESOLUTION] ✓ Found VPC by ID:', vpcModuleName);
             logger.terraform(LogLevel.DEBUG, `Resolved vpc_id by ID for ${currentModule.name} to ${vpcModuleName}`, {
               variableName,
               moduleName: currentModule.name,
               resolvedTo: vpcModuleName
             });
             return `module.${vpcModuleName}.vpc_id`;
+          } else {
+            console.log('[VPC_RESOLUTION] ❌ No node found with ID:', vpcId);
           }
         }
+        
         // Fallback: search for any VPC in the architecture
+        console.log('[VPC_RESOLUTION] Trying fallback - searching for any VPC');
+        console.log('[VPC_RESOLUTION] Node resource types:', nodes.map(n => n.resourceType));
+        
         const anyVpc = nodes.find(n => n.resourceType === 'aws-vpc' || n.resourceType === 'vpc');
         if (anyVpc) {
           const vpcModuleName = this.generateModuleName(anyVpc);
+          console.log('[VPC_RESOLUTION] ⚠️  Using fallback VPC:', vpcModuleName);
           logger.terraform(LogLevel.WARN, `Using fallback VPC for ${currentModule.name}: ${vpcModuleName}`, {
             variableName,
             moduleName: currentModule.name,
@@ -271,6 +320,8 @@ locals {
           });
           return `module.${vpcModuleName}.vpc_id`;
         }
+        
+        console.log('[VPC_RESOLUTION] ❌ FAILED to resolve vpc_id - no VPC found anywhere');
         logger.terraform(LogLevel.ERROR, `Failed to resolve vpc_id for ${currentModule.name}`, {
           variableName,
           moduleName: currentModule.name,
@@ -694,7 +745,7 @@ locals {
    */
   private static generateVariablesTf(
     modules: GeneratedModule[],
-    metadata: ArchitectureMetadata
+    metadata: ParsedArchitectureMetadata
   ): string {
     let content = this.generateFileHeader('Input variables for the Terraform configuration');
 
@@ -774,7 +825,7 @@ output "${sanitizedName}" {
    */
   private static generateTerraformTfvars(
     modules: GeneratedModule[],
-    metadata: ArchitectureMetadata
+    metadata: ParsedArchitectureMetadata
   ): string {
     let content = this.generateFileHeader('Variable values for the Terraform configuration', '#');
 
@@ -800,7 +851,7 @@ common_tags = {
   /**
    * Generate providers.tf
    */
-  private static generateProvidersVersionsTf(metadata: ArchitectureMetadata): string {
+  private static generateProvidersVersionsTf(metadata: ParsedArchitectureMetadata): string {
     let content = this.generateFileHeader('Provider and version constraints');
 
     content += `

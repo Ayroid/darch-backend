@@ -20,8 +20,11 @@ export class ValidationUtils {
   static validateArchitectureData(data: any): { isValid: boolean; errors: string[] } {
     const errors: string[] = [];
 
+    console.log('[VALIDATION UTILS] Validating architecture data');
+
     if (!data) {
       errors.push('Architecture data is required');
+      console.log('[VALIDATION UTILS] No data provided');
       return { isValid: false, errors };
     }
 
@@ -37,14 +40,31 @@ export class ValidationUtils {
     // Check resources
     if (!data.resources || !Array.isArray(data.resources)) {
       errors.push('resources must be an array');
+      console.log('[VALIDATION UTILS] Resources not array or missing');
     } else if (data.resources.length === 0) {
       errors.push('At least one resource is required');
+      console.log('[VALIDATION UTILS] No resources found');
     } else {
+      console.log('[VALIDATION UTILS] Validating', data.resources.length, 'resources');
       data.resources.forEach((item: any, index: number) => {
-        // Only validate essential backend fields, not frontend-specific fields like 'position'
-        const itemFields = ['id', 'resourceType', 'name'];
-        const missingItemFields = this.validateRequiredFields(item, itemFields);
-        errors.push(...missingItemFields.map(field => `resources[${index}].${field} is required`));
+        // Check for id and name (always required)
+        if (!item.id) {
+          errors.push(`resources[${index}].id is required`);
+        }
+        if (!item.name) {
+          errors.push(`resources[${index}].name is required`);
+        }
+        
+        // Check for resourceType OR resource_type (support both formats)
+        if (!item.resourceType && !item.resource_type) {
+          errors.push(`resources[${index}].resourceType or resource_type is required`);
+          console.log(`[VALIDATION UTILS] Resource ${index} missing resource type. Has keys:`, Object.keys(item));
+        }
+        
+        // Check for nodeType OR node_type (support both formats)
+        if (!item.nodeType && !item.node_type) {
+          errors.push(`resources[${index}].nodeType or node_type is required`);
+        }
       });
     }
 
@@ -52,6 +72,12 @@ export class ValidationUtils {
     if (!data.connections || !Array.isArray(data.connections)) {
       errors.push('connections must be an array');
     }
+
+    console.log('[VALIDATION UTILS] Validation complete:', {
+      isValid: errors.length === 0,
+      errorsCount: errors.length,
+      errors: errors.slice(0, 5)
+    });
 
     return {
       isValid: errors.length === 0,

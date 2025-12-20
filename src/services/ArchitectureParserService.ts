@@ -1,10 +1,10 @@
-import { ArchitectureData, ArchitectureNode } from "../models/Architecture.js";
+import { ArchitectureData, ArchitectureResource } from "../models/Architecture.js";
 import { logger, LogCategory, LogLevel } from "../utils/Logger.js";
 
 export interface ParsedArchitecture {
 	nodes: ParsedNode[];
 	connections: ParsedConnection[];
-	metadata: ArchitectureMetadata;
+	metadata: ParsedArchitectureMetadata;
 	validation: ValidationResult;
 }
 
@@ -30,7 +30,7 @@ export interface ParsedConnection {
 	configuration: Record<string, any>;
 }
 
-export interface ArchitectureMetadata {
+export interface ParsedArchitectureMetadata {
 	provider: string;
 	region: string;
 	environment: string;
@@ -71,11 +71,11 @@ export class ArchitectureParserService {
 		architectureData: ArchitectureData
 	): ParsedArchitecture {
 		logger.architecture(LogLevel.INFO, "Parsing architecture", {
-			nodes: architectureData.nodes?.length || 0,
+			nodes: architectureData.resources?.length || 0,
 			connections: architectureData.connections?.length || 0
 		});
 
-		const parsedNodes = this.parseNodes(architectureData.nodes);
+		const parsedNodes = this.parseNodes(architectureData.resources);
 		const parsedConnections = this.parseConnections(
 			architectureData.connections || []
 		);
@@ -107,20 +107,20 @@ export class ArchitectureParserService {
 	/**
 	 * Parse individual nodes
 	 */
-	private static parseNodes(nodes: ArchitectureNode[]): ParsedNode[] {
+	private static parseNodes(nodes: ArchitectureResource[]): ParsedNode[] {
 		return nodes.map((node) => {
-			const terraformModule = this.mapResourceTypeToModule(node.resourceType);
+			const terraformModule = this.mapResourceTypeToModule(node.resource_type);
 
 			return {
 				id: node.id,
 				name: node.name || node.id,
-				resourceType: node.resourceType,
-				nodeType: node.nodeType,
+				resourceType: node.resource_type,
+				nodeType: node.node_type,
 				configuration: this.normalizeConfiguration(node.configuration || {}),
 				position: { x: 0, y: 0 }, // Default position (not needed for backend)
 				dimensions: { width: 100, height: 50 }, // Default dimensions (not needed for backend)
-				parentId: node.parentId,
-				children: nodes.filter((n) => n.parentId === node.id).map((n) => n.id),
+				parentId: node.parent_id,
+				children: nodes.filter((n) => n.parent_id === node.id).map((n) => n.id),
 				dependencies: [], // Will be populated by buildDependencyGraph
 				terraformModule,
 			};
@@ -143,7 +143,7 @@ export class ArchitectureParserService {
 	/**
 	 * Parse metadata
 	 */
-	private static parseMetadata(metadata: any): ArchitectureMetadata {
+	private static parseMetadata(metadata: any): ParsedArchitectureMetadata {
 		return {
 			provider: metadata?.provider || "aws",
 			region: metadata?.region || "us-east-1",
@@ -465,7 +465,7 @@ export class ArchitectureParserService {
 	private static validateArchitecture(
 		nodes: ParsedNode[],
 		connections: ParsedConnection[],
-		metadata: ArchitectureMetadata
+		metadata: ParsedArchitectureMetadata
 	): ValidationResult {
 		const errors: ValidationError[] = [];
 		const warnings: ValidationWarning[] = [];

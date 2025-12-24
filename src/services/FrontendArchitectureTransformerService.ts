@@ -41,6 +41,7 @@ export class FrontendArchitectureTransformerService {
 		const startTime = Date.now();
 
 		const frontendResources = frontendData.resources || [];
+		const frontendMetadata = frontendData.metadata || {};
 
 		console.log('[TRANSFORMER] Starting transformation');
 		console.log('[TRANSFORMER] Frontend resources count:', frontendResources.length);
@@ -67,8 +68,7 @@ export class FrontendArchitectureTransformerService {
 		try {
 			// Transform components
 			const transformedMetadata = this.transformMetadata(
-				frontendData.metadata,
-				frontendResources
+				frontendMetadata
 			);
 
 			// Transform nodes
@@ -126,9 +126,8 @@ export class FrontendArchitectureTransformerService {
 				mappings,
 			};
 		} catch (error) {
-			const errorMessage = `Failed to transform architecture data: ${
-				error instanceof Error ? error.message : "Unknown error"
-			}`;
+			const errorMessage = `Failed to transform architecture data: ${error instanceof Error ? error.message : "Unknown error"
+				}`;
 			errors.push(errorMessage);
 			logger.error("Architecture transformation failed", {
 				error: errorMessage,
@@ -149,8 +148,7 @@ export class FrontendArchitectureTransformerService {
 	 */
 	private static transformMetadata(
 		frontendMetadata: FrontendArchitectureMetadata,
-		frontendResources: FrontendResource[]
-	): any {
+	): ArchitectureMetadata {
 		const transformed: ArchitectureMetadata = {
 			name: frontendMetadata.name || "Untitled Architecture",
 			description: frontendMetadata.description || "",
@@ -160,27 +158,10 @@ export class FrontendArchitectureTransformerService {
 			provider: frontendMetadata.provider || "aws",
 		};
 
-		// Extract region from aws-region container resource if available
-		const regionResource = frontendResources.find(
-			(resource) => resource.resource_type === "aws-region"
-		)?.configuration as FrontendAWSRegionConfiguration | undefined;
-
-		if (regionResource?.region) {
-			transformed.region = regionResource.region;
-		} else if (frontendMetadata.region) {
-			transformed.region = frontendMetadata.region;
-		}
-
 		// Extract additional properties that might be useful
-		if (frontendMetadata.environment) {
-			transformed.environment = frontendMetadata.environment;
-		}
-		if (frontendMetadata.project) {
-			transformed.project = frontendMetadata.project;
-		}
-		if (frontendMetadata.tags) {
-			transformed.tags = frontendMetadata.tags;
-		}
+		transformed.environment = frontendMetadata.environment || undefined;
+		transformed.project = frontendMetadata.project || undefined;
+		transformed.tags = frontendMetadata.tags || undefined;
 
 		return transformed;
 	}
@@ -259,7 +240,6 @@ export class FrontendArchitectureTransformerService {
 
 				const transformedResource: ArchitectureResource = {
 					id: frontendResource.id,
-					node_type: nodeType,
 					resource_type: resourceType,
 					name: frontendResource.name || frontendResource.id,
 					configuration: transformedConfig,
@@ -276,9 +256,8 @@ export class FrontendArchitectureTransformerService {
 					transformations,
 				});
 			} catch (error) {
-				const errorMessage = `Failed to transform resource ${
-					frontendResource.id
-				}: ${error instanceof Error ? error.message : "Unknown error"}`;
+				const errorMessage = `Failed to transform resource ${frontendResource.id
+					}: ${error instanceof Error ? error.message : "Unknown error"}`;
 				errors.push(errorMessage);
 				logger.error("Resource transformation failed", {
 					error: errorMessage,
@@ -310,7 +289,6 @@ export class FrontendArchitectureTransformerService {
 
 					const transformedResource: ArchitectureResource = {
 						id: containerResource.id,
-						node_type: "aws_service",
 						resource_type: resourceType,
 						name: containerResource.name || containerResource.id,
 						configuration: transformedConfig,
@@ -326,9 +304,8 @@ export class FrontendArchitectureTransformerService {
 						transformations,
 					});
 				} catch (error) {
-					const errorMessage = `Failed to convert container resource ${
-						containerResource.id
-					}: ${error instanceof Error ? error.message : "Unknown error"}`;
+					const errorMessage = `Failed to convert container resource ${containerResource.id
+						}: ${error instanceof Error ? error.message : "Unknown error"}`;
 					errors.push(errorMessage);
 				}
 			}
@@ -538,7 +515,7 @@ export class FrontendArchitectureTransformerService {
 		transformations: string[]
 	): void {
 		// Frontend now sends snake_case - minimal transformation needed
-		
+
 		// Ensure subnet_type is set
 		if (!config.subnet_type) {
 			if (frontendResource.resource_type.includes("public")) {
@@ -571,7 +548,7 @@ export class FrontendArchitectureTransformerService {
 		transformations: string[]
 	): void {
 		// Frontend now sends snake_case - minimal transformation needed
-		
+
 		// Set default root_block_device if not present
 		if (!config.root_block_device) {
 			config.root_block_device = {
@@ -611,7 +588,7 @@ export class FrontendArchitectureTransformerService {
 		transformations: string[]
 	): void {
 		// Frontend now sends snake_case - minimal transformation needed
-		
+
 		// Set default description if missing
 		if (!config.name && !config.description) {
 			config.description = "Security group created by Darch";
@@ -661,7 +638,7 @@ export class FrontendArchitectureTransformerService {
 		transformations: string[]
 	): void {
 		// Frontend now sends snake_case - minimal transformation needed
-		
+
 		// Set default connectivity_type if not specified
 		if (!config.connectivity_type) {
 			config.connectivity_type = "public";
@@ -689,7 +666,7 @@ export class FrontendArchitectureTransformerService {
 		transformations: string[]
 	): void {
 		// Frontend now sends snake_case - minimal transformation needed
-		
+
 		// Ensure routes is a map (not array)
 		if (!config.routes || typeof config.routes !== "object" || Array.isArray(config.routes)) {
 			config.routes = {};
@@ -833,9 +810,8 @@ export class FrontendArchitectureTransformerService {
 
 				transformedConnections.push(connection);
 			} catch (error) {
-				const errorMessage = `Failed to transform connection: ${
-					error instanceof Error ? error.message : "Unknown error"
-				}`;
+				const errorMessage = `Failed to transform connection: ${error instanceof Error ? error.message : "Unknown error"
+					}`;
 				connectionWarnings.push(errorMessage);
 			}
 		}
@@ -885,6 +861,7 @@ export class FrontendArchitectureTransformerService {
 	/**
 	 * Validate frontend architecture data structure
 	 */
+	// TODO: Enhance validation rules as by declaring the type for data for the frontend format
 	static validateFrontendData(data: any): { valid: boolean; errors: string[]; warnings: string[] } {
 		const errors: string[] = [];
 		const warnings: string[] = [];
@@ -936,7 +913,7 @@ export class FrontendArchitectureTransformerService {
 			if (!resource.nodeType && !resource.node_type) {
 				errors.push(`Resource ${resource.id || index} is missing nodeType/node_type`);
 			}
-			
+
 			// Warn if using old field names
 			if (resource.nodeType || resource.resourceType || resource.parentId) {
 				warnings.push(`Resource ${resource.id || index} using old camelCase field names (nodeType/resourceType/parentId)`);

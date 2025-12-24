@@ -11,7 +11,7 @@ import { ResponseView } from "../views/ResponseView.js";
 import { logger, LogCategory, LogLevel } from "../utils/Logger.js";
 
 interface RequestWithId extends Request {
-  requestId?: string;
+	requestId?: string;
 }
 
 export class TerraformController {
@@ -24,15 +24,6 @@ export class TerraformController {
 	): Promise<void> {
 		const startTime = Date.now();
 		let projectName = "infrastructure"; // Default value for error logging
-
-		console.log('\n\n========================================');
-		console.log('🚀 NEW TERRAFORM GENERATION REQUEST');
-		console.log('========================================');
-		console.log('Request ID:', req.requestId);
-		console.log('Request body keys:', Object.keys(req.body));
-		console.log('Request body:', JSON.stringify(req.body, null, 2).substring(0, 1000));
-		console.log('Body is empty?:', Object.keys(req.body).length === 0);
-
 		try {
 			const {
 				architectureData,
@@ -42,15 +33,6 @@ export class TerraformController {
 				projectName?: string;
 			} = req.body;
 
-			console.log('Architecture data extracted:', {
-				exists: !!architectureData,
-				type: typeof architectureData,
-				hasMetadata: !!architectureData?.metadata,
-				hasResources: !!architectureData?.resources,
-				resourcesIsArray: Array.isArray(architectureData?.resources),
-				resourcesCount: architectureData?.resources?.length || 0
-			});
-
 			projectName = reqProjectName; // Update for actual use
 
 			logger.terraform(LogLevel.INFO, 'Generating Terraform configuration', {
@@ -59,13 +41,6 @@ export class TerraformController {
 				resourcesCount: architectureData?.resources?.length || 0,
 				connectionsCount: architectureData?.connections?.length || 0
 			});
-
-			console.log('========== INCOMING REQUEST DATA ==========');
-			console.log('Resources count:', architectureData?.resources?.length);
-			if (architectureData?.resources && architectureData.resources.length > 0) {
-				console.log('First resource sample:', JSON.stringify(architectureData.resources[0], null, 2));
-				console.log('Resource field names:', Object.keys(architectureData.resources[0]));
-			}
 
 			if (!architectureData) {
 				logger.validation(LogLevel.WARN, 'Architecture data required', {
@@ -79,36 +54,20 @@ export class TerraformController {
 				return;
 			}
 
-			// Detect format and convert if necessary
 			let processedArchitectureData: ArchitectureData;
 
-			console.log('========== FORMAT DETECTION ==========');
 			const isFrontend = TerraformController.isFrontendFormat(architectureData);
-			console.log('Is frontend format?:', isFrontend);
 
 			if (isFrontend) {
-				// Frontend Format (Aligned snake_case format)
+
 				logger.architecture(LogLevel.INFO, 'Detected frontend format', {
 					requestId: req.requestId
 				});
-				console.log('Processing as frontend format');
 
-				// Validate frontend format
-				console.log('========== FRONTEND VALIDATION ==========');
 				const frontendValidation =
 					FrontendArchitectureTransformerService.validateFrontendData(
 						architectureData
 					);
-
-				console.log('Validation result:', {
-					valid: frontendValidation.valid,
-					errorsCount: frontendValidation.errors.length,
-					warningsCount: frontendValidation.warnings?.length || 0
-				});
-
-				if (frontendValidation.warnings && frontendValidation.warnings.length > 0) {
-					console.log('⚠️  Validation warnings:', frontendValidation.warnings);
-				}
 
 				if (!frontendValidation.valid) {
 					console.log('❌ VALIDATION FAILED:', frontendValidation.errors);
@@ -119,11 +78,6 @@ export class TerraformController {
 					res.status(400).json(errorResponse);
 					return;
 				}
-				console.log('✓ Frontend validation passed');
-
-				console.log("----------------------------------------------------------------------------------");
-				console.log("Architecture data (frontend format) received for transformation:");
-				console.log(JSON.stringify(architectureData, null, 2));
 
 				// Transform frontend data to backend format
 				const transformationResult =
@@ -142,11 +96,6 @@ export class TerraformController {
 
 				processedArchitectureData = transformationResult.transformed;
 
-				console.log("----------------------------------------------------------------------------------");
-				console.log("Transformed architecture data (backend format):");
-				console.log(JSON.stringify(processedArchitectureData, null, 2));
-				console.log("----------------------------------------------------------------------------------");
-
 				logger.architecture(LogLevel.INFO, 'Frontend transformation completed', {
 					requestId: req.requestId,
 					resources: transformationResult.mappings.length,
@@ -161,9 +110,6 @@ export class TerraformController {
 				processedArchitectureData = architectureData as ArchitectureData;
 			}
 
-			// Step 1: Parse and validate architecture
-			console.log('========== ARCHITECTURE PARSING ==========');
-			console.log('Resources to parse:', processedArchitectureData.resources.length);
 			const parsedArchitecture = ArchitectureParserService.parseArchitecture(
 				processedArchitectureData
 			);
@@ -1512,6 +1458,7 @@ export class TerraformController {
 	/**
 	 * Detect if the architecture data is in frontend format
 	 */
+	// TODO: Improve detection logic by declaring the type for data for the frontend format
 	private static isFrontendFormat(data: any): boolean {
 		// Check for frontend format structure
 		return !!(
@@ -1521,16 +1468,10 @@ export class TerraformController {
 			data.resources.length > 0 &&
 			data.resources.some(
 				(resource: any) =>
-					// Check for new snake_case format
-					(resource.node_type &&
+				// Check for new snake_case format
+				(resource.node_type &&
 					(resource.node_type === "aws_service" ||
-						resource.node_type === "aws_container")) ||
-					// Check for old camelCase format (backward compatibility)
-					(resource.nodeType &&
-					(resource.nodeType === "awsService" ||
-						resource.nodeType === "awsContainer")) &&
-					resource.position !== undefined && // Frontend has position, backend doesn't
-					resource.icon !== undefined // Frontend has icon, backend doesn't
+						resource.node_type === "aws_container"))
 			)
 		);
 	}

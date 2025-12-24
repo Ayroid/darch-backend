@@ -12,7 +12,6 @@ export interface ParsedNode {
 	id: string;
 	name: string;
 	resourceType: string;
-	nodeType: string;
 	configuration: Record<string, any>;
 	position: { x: number; y: number };
 	dimensions: { width: number; height: number };
@@ -115,7 +114,6 @@ export class ArchitectureParserService {
 				id: node.id,
 				name: node.name || node.id,
 				resourceType: node.resource_type,
-				nodeType: node.node_type,
 				configuration: this.normalizeConfiguration(node.configuration || {}),
 				position: { x: 0, y: 0 }, // Default position (not needed for backend)
 				dimensions: { width: 100, height: 50 }, // Default dimensions (not needed for backend)

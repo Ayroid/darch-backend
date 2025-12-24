@@ -10,7 +10,8 @@
 		"build": "tsc",
 		"start": "node dist/index.js",
 		"dev": "nodemon",
-		"cli": "npm run build && node dist/index.js --cli",
+		"dev:tsx": "tsx watch src/index.ts",
+		"cli": "tsx src/index.ts --cli",
 		"test": "jest",
 		"test:watch": "jest --watch",
 		"test:coverage": "jest --coverage",
@@ -35,6 +36,7 @@
 		"nodemon": "^3.1.10",
 		"ts-jest": "^29.4.4",
 		"ts-node": "^10.9.2",
+		"tsx": "^4.21.0",
 		"typescript": "^5.8.3"
 	},
 	"dependencies": {

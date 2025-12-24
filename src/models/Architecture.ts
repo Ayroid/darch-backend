@@ -1,14 +1,13 @@
 export interface ArchitectureMetadata {
 	name: string;
-  region?: string;
 	description?: string;
 	version: string;
 	createdAt: string;
 	lastModified: string;
 	provider: string;
-  environment?: string;
-  project?: string;
-  tags?: Record<string, string>;
+	environment?: string;
+	project?: string;
+	tags?: Record<string, string>;
 }
 
 export interface ArchitectureData {
@@ -21,7 +20,7 @@ export interface ArchitectureData {
 
 export interface ArchitectureResource {
 	id: string;
-	node_type: "aws_service" | "aws_container";
+	node_type?: string;
 	resource_type: string;
 	name: string;
 	configuration: Record<string, any>;
@@ -614,7 +613,7 @@ export function isFrontendV1Format(data: any): data is FrontendV1ArchitectureDat
 	);
 	const hasCamelCaseFields = data?.resources?.some(
 		(r: any) => r.configuration?.cidrBlock !== undefined ||
-		           r.configuration?.awsVpcId !== undefined
+			r.configuration?.awsVpcId !== undefined
 	);
 
 	return hasV1ResourceTypes || hasCamelCaseFields;
@@ -628,11 +627,11 @@ export function isFrontendV2Format(data: any): data is FrontendV2ArchitectureDat
 	// Fallback detection: check for V2 characteristics
 	const hasV2ResourceTypes = data?.resources?.some(
 		(r: any) => !r.resourceType?.startsWith("aws-") &&
-		           ["ec2", "vpc", "subnet", "security-group"].includes(r.resourceType)
+			["ec2", "vpc", "subnet", "security-group"].includes(r.resourceType)
 	);
 	const hasSnakeCaseFields = data?.resources?.some(
 		(r: any) => r.configuration?.cidr_block !== undefined ||
-		           r.configuration?.instance_type !== undefined
+			r.configuration?.instance_type !== undefined
 	);
 
 	return hasV2ResourceTypes && hasSnakeCaseFields;

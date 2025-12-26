@@ -371,11 +371,6 @@ export class FrontendArchitectureTransformerService {
 			...frontendResource.configuration,
 		} as FrontendAWSResourceConfiguration & Record<string, any>;
 
-		console.log(
-			"-----------------------------Frontend Resource-----------------------------",
-			frontendResource.resource_type
-		);
-
 		// Transform specific configuration based on resource type
 		switch (frontendResource.resource_type) {
 			case "aws-vpc":
@@ -915,23 +910,12 @@ export class FrontendArchitectureTransformerService {
 				errors.push(
 					`Resource ${resource.id || index} is missing resource_type`
 				);
-				console.log("[VALIDATOR] Resource fields:", Object.keys(resource));
 			}
 			if (!resource.node_type) {
 				errors.push(
 					`Resource ${resource.id || index} is missing node_type`
 				);
 			}
-		}
-
-		console.log("[VALIDATOR] Validation complete:", {
-			valid: errors.length === 0,
-			errorsCount: errors.length,
-			warningsCount: warnings.length,
-		});
-
-		if (errors.length > 0) {
-			console.log("[VALIDATOR] ❌ Errors:", errors);
 		}
 
 		return { valid: errors.length === 0, errors, warnings };

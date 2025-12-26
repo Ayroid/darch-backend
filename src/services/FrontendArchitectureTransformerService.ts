@@ -6,7 +6,6 @@ import {
 	FrontendResource,
 	FrontendArchitectureData,
 	FrontendArchitectureMetadata,
-	FrontendAWSRegionConfiguration,
 	FrontendVPCConfiguration,
 	FrontendEC2Configuration,
 	FrontendSubnetConfiguration,
@@ -14,26 +13,54 @@ import {
 	FrontendInternetGatewayConfiguration,
 	FrontendNATGatewayConfiguration,
 	FrontendRouteTableConfiguration,
+	FrontendS3Configuration,
+	FrontendRDSConfiguration,
+	FrontendAWSResourceConfiguration,
+	FRONTEND_TO_BACKEND_RESOURCE_TYPE_MAP,
+	FrontendConnection,
+	RouteTableAssociation,
+	ResourceMapping,
+	TransformationResult,
+	TransformationSummary,
 } from "../models/Architecture.js";
 import { logger, LogCategory, LogLevel } from "../utils/Logger.js";
 
-export interface TransformationResult {
-	transformed: ArchitectureData;
-	warnings: string[];
-	errors: string[];
-	mappings: ResourceMapping[];
-}
-
-export interface ResourceMapping {
-	frontendId: string;
-	backendId: string;
-	resourceType: string;
-	transformations: string[];
-}
-
+/**
+ * Service responsible for transforming frontend architecture data to backend format
+ *
+ * This service acts as a data validation and normalization layer between the frontend
+ * and backend. It ensures that all required fields exist with proper defaults, converts
+ * data structures to backend-compatible formats, and resolves resource references.
+ *
+ * Key responsibilities:
+ * - Validate and normalize resource configurations
+ * - Set required defaults for missing fields
+ * - Convert frontend resource types to backend types
+ * - Resolve parent-child relationships and resource references
+ * - Ensure data structure compatibility with Terraform generators
+ *
+ * @class FrontendArchitectureTransformerService
+ */
 export class FrontendArchitectureTransformerService {
 	/**
 	 * Transform frontend architecture data to backend format
+	 *
+	 * Main entry point for transforming frontend architecture data. Validates, normalizes,
+	 * and converts frontend resource definitions into backend-compatible format ready for
+	 * Terraform code generation.
+	 *
+	 * @param {FrontendArchitectureData} frontendData - The architecture data from frontend
+	 * @param {FrontendArchitectureMetadata} frontendData.metadata - Project metadata (name, version, provider, etc.)
+	 * @param {FrontendResource[]} frontendData.resources - Array of AWS resources to transform
+	 * @param {any[]} frontendData.connections - Resource connections/dependencies
+	 * @param {Record<string, any>} frontendData.variables - Terraform variables
+	 * @param {Record<string, any>} frontendData.outputs - Terraform outputs
+	 *
+	 * @returns {TransformationResult} Result containing transformed data, warnings, errors, and mappings
+	 * @returns {ArchitectureData} result.transformed - Backend-formatted architecture data
+	 * @returns {string[]} result.warnings - Non-critical issues (e.g., missing optional fields)
+	 * @returns {string[]} result.errors - Critical errors that prevented transformation
+	 * @returns {ResourceMapping[]} result.mappings - Resource ID mappings with transformation details
 	 */
 	static transformToBackendFormat(
 		frontendData: FrontendArchitectureData
@@ -42,19 +69,6 @@ export class FrontendArchitectureTransformerService {
 
 		const frontendResources = frontendData.resources || [];
 		const frontendMetadata = frontendData.metadata || {};
-
-		console.log('[TRANSFORMER] Starting transformation');
-		console.log('[TRANSFORMER] Frontend resources count:', frontendResources.length);
-		if (frontendResources.length > 0) {
-			console.log('[TRANSFORMER] Sample resource field names:', Object.keys(frontendResources[0]));
-			console.log('[TRANSFORMER] Sample resource:', {
-				id: frontendResources[0].id,
-				node_type: frontendResources[0].node_type,
-				resource_type: frontendResources[0].resource_type,
-				name: frontendResources[0].name,
-				parent_id: frontendResources[0].parent_id
-			});
-		}
 
 		logger.architecture(LogLevel.INFO, "Transforming frontend architecture", {
 			resources: frontendResources.length,
@@ -67,9 +81,7 @@ export class FrontendArchitectureTransformerService {
 
 		try {
 			// Transform components
-			const transformedMetadata = this.transformMetadata(
-				frontendMetadata
-			);
+			const transformedMetadata = this.transformMetadata(frontendMetadata);
 
 			// Transform nodes
 			const { transformedResources, resourceWarnings, resourceMappings } =
@@ -96,21 +108,6 @@ export class FrontendArchitectureTransformerService {
 
 			const duration = Date.now() - startTime;
 
-			console.log('[TRANSFORMER] Transformation completed:');
-			console.log('[TRANSFORMER] - Transformed resources:', transformedResources.length);
-			console.log('[TRANSFORMER] - Warnings:', warnings.length);
-			console.log('[TRANSFORMER] - Errors:', errors.length);
-			console.log('[TRANSFORMER] - Duration:', duration, 'ms');
-			if (transformedResources.length > 0) {
-				console.log('[TRANSFORMER] First transformed resource:', JSON.stringify(transformedResources[0], null, 2));
-			}
-			if (warnings.length > 0) {
-				console.log('[TRANSFORMER] Warnings:', warnings.slice(0, 5));
-			}
-			if (errors.length > 0) {
-				console.log('[TRANSFORMER] ❌ Errors:', errors);
-			}
-
 			logger.architecture(LogLevel.INFO, "Frontend transformation completed", {
 				transformedResources: transformedResources,
 				resources: transformedResources.length,
@@ -126,8 +123,9 @@ export class FrontendArchitectureTransformerService {
 				mappings,
 			};
 		} catch (error) {
-			const errorMessage = `Failed to transform architecture data: ${error instanceof Error ? error.message : "Unknown error"
-				}`;
+			const errorMessage = `Failed to transform architecture data: ${
+				error instanceof Error ? error.message : "Unknown error"
+			}`;
 			errors.push(errorMessage);
 			logger.error("Architecture transformation failed", {
 				error: errorMessage,
@@ -135,7 +133,20 @@ export class FrontendArchitectureTransformerService {
 			});
 
 			return {
-				transformed: this.createEmptyArchitecture(),
+				transformed: {
+					metadata: {
+						name: "Empty Architecture",
+						description: "Failed to transform architecture",
+						version: "1.0.0",
+						created_at: new Date().toISOString(),
+						last_modified: new Date().toISOString(),
+						provider: "aws",
+					},
+					resources: [],
+					connections: [],
+					variables: {},
+					outputs: {},
+				},
 				warnings,
 				errors,
 				mappings,
@@ -145,16 +156,27 @@ export class FrontendArchitectureTransformerService {
 
 	/**
 	 * Transform metadata from frontend to backend format
+	 *
+	 * Converts frontend architecture metadata to backend format, ensuring all required
+	 * fields exist with sensible defaults.
+	 *
+	 * @param {FrontendArchitectureMetadata} frontendMetadata - Frontend metadata object
+	 * @param {string} frontendMetadata.name - Project name
+	 * @param {string} frontendMetadata.description - Project description
+	 * @param {string} frontendMetadata.version - Project version
+	 * @param {string} frontendMetadata.provider - Cloud provider (e.g., 'aws')
+	 *
+	 * @returns {ArchitectureMetadata} Transformed metadata with defaults applied
 	 */
 	private static transformMetadata(
-		frontendMetadata: FrontendArchitectureMetadata,
+		frontendMetadata: FrontendArchitectureMetadata
 	): ArchitectureMetadata {
 		const transformed: ArchitectureMetadata = {
 			name: frontendMetadata.name || "Untitled Architecture",
 			description: frontendMetadata.description || "",
 			version: frontendMetadata.version || "1.0.0",
-			createdAt: frontendMetadata.createdAt || new Date().toISOString(),
-			lastModified: frontendMetadata.lastModified || new Date().toISOString(),
+			created_at: frontendMetadata.created_at || new Date().toISOString(),
+			last_modified: frontendMetadata.last_modified || new Date().toISOString(),
 			provider: frontendMetadata.provider || "aws",
 		};
 
@@ -167,7 +189,20 @@ export class FrontendArchitectureTransformerService {
 	}
 
 	/**
-	 * Transform nodes from frontend to backend format
+	 * Transform resources from frontend to backend format
+	 *
+	 * Processes frontend resources, separating container resources (VPCs, Subnets as containers)
+	 * from service resources (EC2, S3, RDS). Applies resource-specific transformations,
+	 * validates configurations, and resolves parent-child relationships.
+	 *
+	 * @param {FrontendResource[]} frontendResources - Array of frontend resources to transform
+	 * @param {string[]} warnings - Array to accumulate non-critical warnings
+	 * @param {string[]} errors - Array to accumulate critical errors
+	 *
+	 * @returns {Object} Transformation result with resources, warnings, and mappings
+	 * @returns {ArchitectureResource[]} result.transformedResources - Backend-formatted resources
+	 * @returns {string[]} result.resourceWarnings - Warnings generated during resource transformation
+	 * @returns {ResourceMapping[]} result.resourceMappings - ID mappings and transformation logs
 	 */
 	private static transformResources(
 		frontendResources: FrontendResource[],
@@ -186,23 +221,48 @@ export class FrontendArchitectureTransformerService {
 		const serviceResources = frontendResources.filter(
 			(resource) => resource.node_type === "aws_service"
 		);
+
 		const containerResources = frontendResources.filter(
 			(resource) => resource.node_type === "aws_container"
 		);
 
-		// Create a mapping of container resources for reference
+		// Service Resources Examples - EC2, S3, RDS, etc.
+		// Container Resources Examples - VPCs, Subnets, Regions, Availability Zones, etc.
+
+		// Create a mapping of container resources for reference resolution (vpc_id, subnet_id, etc.)
 		const containerMapping: Map<string, FrontendResource> = new Map(
 			containerResources.map((resource) => [resource.id, resource])
 		);
 
-		for (const frontendResource of serviceResources) {
+		// Combine service resources and convertible container resources (VPCs, Subnets) into single array
+		const convertibleTypes = [
+			"aws-vpc",
+			"aws-subnet",
+			"aws-public-subnet",
+			"aws-private-subnet",
+			"aws-security-group",
+		];
+		const convertibleContainers = containerResources.filter((resource) =>
+			convertibleTypes.includes(resource.resource_type)
+		);
+		const resourcesToTransform = [
+			...serviceResources,
+			...convertibleContainers,
+		];
+
+		// Process all resources in a single loop
+		for (const frontendResource of resourcesToTransform) {
 			try {
 				const transformations: string[] = [];
 
+				// Track if this was originally a container resource
+				if (frontendResource.node_type === "aws_container") {
+					transformations.push("Converted from container to service");
+				}
+
 				// Transform resource type from frontend format to backend format
 				// aws-vpc → vpc, aws-ec2 → ec2, etc.
-				// TODO: Check the usage of these mappings throughout the backend
-				const { resourceType, nodeType } = this.mapResourceType(
+				const { resourceType } = this.mapResourceType(
 					frontendResource.resource_type,
 					transformations
 				);
@@ -215,35 +275,12 @@ export class FrontendArchitectureTransformerService {
 					resourceWarnings
 				);
 
-				// Find parent container for context
-				let parentId = frontendResource.parent_id;
-				let actualParent = undefined;
-
-				// Set parentId only for resources that truly need parent-child relationships
-				// For most AWS resources, explicit configuration (vpc_id, subnet_id) is preferred over parent-child
-				if (parentId && containerMapping.has(parentId)) {
-					const parentContainer = containerMapping.get(parentId)!;
-
-					// Only set parent relationships for resources that benefit from containment
-					// Most AWS resources will use explicit vpc_id, subnet_id references instead
-					if (
-						parentContainer.resource_type.includes("subnet") &&
-						frontendResource.resource_type === "aws-ec2"
-					) {
-						// EC2 instances can have subnet as parent for visual hierarchy
-						actualParent = parentId;
-						transformations.push(`Kept subnet parent for EC2 instance`);
-					}
-					// For other resources, avoid parent-child to prevent circular dependencies
-					// They will use explicit configuration fields instead (vpc_id, etc.)
-				}
-
 				const transformedResource: ArchitectureResource = {
 					id: frontendResource.id,
 					resource_type: resourceType,
 					name: frontendResource.name || frontendResource.id,
 					configuration: transformedConfig,
-					parent_id: actualParent,
+					parent_id: frontendResource.parent_id,
 				};
 
 				transformedResources.push(transformedResource);
@@ -256,58 +293,15 @@ export class FrontendArchitectureTransformerService {
 					transformations,
 				});
 			} catch (error) {
-				const errorMessage = `Failed to transform resource ${frontendResource.id
-					}: ${error instanceof Error ? error.message : "Unknown error"}`;
+				const errorMessage = `Failed to transform resource ${
+					frontendResource.id
+				}: ${error instanceof Error ? error.message : "Unknown error"}`;
 				errors.push(errorMessage);
 				logger.error("Resource transformation failed", {
 					error: errorMessage,
 					nodeId: frontendResource.id,
 					category: LogCategory.ARCHITECTURE,
 				});
-			}
-		}
-
-		// Add logical container resources as service resources if they represent actual AWS resources
-		for (const containerResource of containerResources) {
-			if (this.shouldConvertContainerToService(containerResource)) {
-				try {
-					const transformations: string[] = [
-						`Converted from container to service`,
-					];
-
-					const { resourceType, nodeType } = this.mapResourceType(
-						containerResource.resource_type,
-						transformations
-					);
-
-					const transformedConfig = this.transformNodeConfiguration(
-						containerResource,
-						containerMapping,
-						transformations,
-						resourceWarnings
-					);
-
-					const transformedResource: ArchitectureResource = {
-						id: containerResource.id,
-						resource_type: resourceType,
-						name: containerResource.name || containerResource.id,
-						configuration: transformedConfig,
-						parent_id: containerResource.parent_id,
-					};
-
-					transformedResources.push(transformedResource);
-
-					resourceMappings.push({
-						frontendId: containerResource.id,
-						backendId: containerResource.id,
-						resourceType: resourceType,
-						transformations,
-					});
-				} catch (error) {
-					const errorMessage = `Failed to convert container resource ${containerResource.id
-						}: ${error instanceof Error ? error.message : "Unknown error"}`;
-					errors.push(errorMessage);
-				}
 			}
 		}
 
@@ -320,78 +314,26 @@ export class FrontendArchitectureTransformerService {
 
 	/**
 	 * Map frontend resource type to backend resource type
+	 *
+	 * Converts frontend resource type identifiers (e.g., 'aws-vpc', 'aws-ec2') to
+	 * backend format (e.g., 'vpc', 'ec2') using the predefined mapping.
+	 *
+	 * @param {string} frontendResourceType - Frontend resource type (e.g., 'aws-vpc', 'aws-ec2')
+	 * @param {string[]} transformations - Array to log transformation operations
+	 *
+	 * @returns {Object} Mapped resource type
+	 * @returns {string} result.resourceType - Backend resource type identifier
 	 */
 	private static mapResourceType(
 		frontendResourceType: string,
 		transformations: string[]
 	): {
 		resourceType: string;
-		nodeType: "aws_service" | "aws_container";
 	} {
-		const resourceTypeMap: Record<
-			string,
-			{ resourceType: string; nodeType: "aws_service" | "aws_container" }
-		> = {
-			// Container resources
-			"region": { resourceType: "region", nodeType: "aws_container" },
-			"aws-region": { resourceType: "region", nodeType: "aws_container" },
-			"availability-zone": {
-				resourceType: "availability-zone",
-				nodeType: "aws_container",
-			},
-			"aws-availability-zone": {
-				resourceType: "availability-zone",
-				nodeType: "aws_container",
-			},
-			// Service resources (most are pass-through now)
-			"vpc": { resourceType: "vpc", nodeType: "aws_service" },
-			"aws-vpc": { resourceType: "vpc", nodeType: "aws_service" },
-			"subnet": { resourceType: "subnet", nodeType: "aws_service" },
-			"aws-subnet": { resourceType: "subnet", nodeType: "aws_service" },
-			"aws-public-subnet": { resourceType: "subnet", nodeType: "aws_service" },
-			"aws-private-subnet": { resourceType: "subnet", nodeType: "aws_service" },
-			"ec2": { resourceType: "ec2", nodeType: "aws_service" },
-			"aws-ec2": { resourceType: "ec2", nodeType: "aws_service" },
-			"security-group": {
-				resourceType: "security-group",
-				nodeType: "aws_service",
-			},
-			"aws-security-group": {
-				resourceType: "security-group",
-				nodeType: "aws_service",
-			},
-			"internet-gateway": {
-				resourceType: "internet-gateway",
-				nodeType: "aws_service",
-			},
-			"aws-internet-gateway": {
-				resourceType: "internet-gateway",
-				nodeType: "aws_service",
-			},
-			"nat-gateway": {
-				resourceType: "nat-gateway",
-				nodeType: "aws_service",
-			},
-			"aws-nat-gateway": {
-				resourceType: "nat-gateway",
-				nodeType: "aws_service",
-			},
-			"route-table": { resourceType: "route-table", nodeType: "aws_service" },
-			"aws-route-table": { resourceType: "route-table", nodeType: "aws_service" },
-			"s3": { resourceType: "s3", nodeType: "aws_service" },
-			"aws-s3": { resourceType: "s3", nodeType: "aws_service" },
-			"rds": { resourceType: "rds", nodeType: "aws_service" },
-			"aws-rds": { resourceType: "rds", nodeType: "aws_service" },
-		};
+		const resourceType =
+			FRONTEND_TO_BACKEND_RESOURCE_TYPE_MAP[frontendResourceType.toLowerCase()];
 
-		const mapping = resourceTypeMap[frontendResourceType.toLowerCase()];
-
-		if (mapping) {
-			return {
-				resourceType: mapping.resourceType,
-				nodeType: mapping.nodeType,
-			};
-		}
+		if (resourceType) return { resourceType };
 
 		// Default fallback
 		transformations.push(
@@ -399,82 +341,108 @@ export class FrontendArchitectureTransformerService {
 		);
 		return {
 			resourceType: frontendResourceType,
-			nodeType: "aws_service",
 		};
 	}
 
 	/**
-	 * Transform node configuration from frontend to backend format
+	 * Transform resource configuration from frontend to backend format
+	 *
+	 * Validates and normalizes resource configurations based on resource type.
+	 * Ensures all required fields exist with proper defaults, converts data structures
+	 * to backend-compatible formats, and resolves resource references.
+	 *
+	 * This acts as a safety layer - even if frontend sends correct data, this ensures
+	 * robustness against version mismatches, client bugs, or future API consumers.
+	 *
+	 * @param {FrontendResource} frontendResource - The resource to transform
+	 * @param {Map<string, FrontendResource>} containerMapping - Map of container resources for reference resolution
+	 * @param {string[]} transformations - Array to log transformation operations
+	 * @param {string[]} warnings - Array to log non-critical issues
+	 *
+	 * @returns {FrontendAWSResourceConfiguration & Record<string, any>} Validated and normalized configuration
 	 */
 	private static transformNodeConfiguration(
 		frontendResource: FrontendResource,
 		containerMapping: Map<string, FrontendResource>,
 		transformations: string[],
 		warnings: string[]
-	): Record<string, any> {
-		const config = { ...frontendResource.configuration } as Record<string, any>;
+	): FrontendAWSResourceConfiguration & Record<string, any> {
+		const config = {
+			...frontendResource.configuration,
+		} as FrontendAWSResourceConfiguration & Record<string, any>;
+
+		console.log(
+			"-----------------------------Frontend Resource-----------------------------",
+			frontendResource.resource_type
+		);
 
 		// Transform specific configuration based on resource type
 		switch (frontendResource.resource_type) {
-			case "vpc":
+			case "aws-vpc":
 				this.transformVpcConfiguration(
-					config as unknown as FrontendVPCConfiguration,
+					config as FrontendVPCConfiguration,
 					transformations
 				);
 				break;
-			case "subnet":
+			case "aws-subnet":
 				this.transformSubnetConfiguration(
-					config as unknown as FrontendSubnetConfiguration,
+					config as FrontendSubnetConfiguration & Record<string, any>,
 					frontendResource,
 					containerMapping,
 					transformations
 				);
 				break;
-			case "ec2":
+			case "aws-ec2":
 				this.transformEc2Configuration(
-					config as unknown as FrontendEC2Configuration,
+					config as FrontendEC2Configuration & Record<string, any>,
 					frontendResource,
 					containerMapping,
 					transformations
 				);
 				break;
-			case "security-group":
+			case "aws-security-group":
 				this.transformSecurityGroupConfiguration(
-					config as unknown as FrontendSecurityGroupConfiguration,
+					config as FrontendSecurityGroupConfiguration & Record<string, any>,
 					transformations
 				);
 				break;
-			case "internet-gateway":
+			case "aws-internet-gateway":
 				this.transformInternetGatewayConfiguration(
-					config as unknown as FrontendInternetGatewayConfiguration,
+					config as FrontendInternetGatewayConfiguration & Record<string, any>,
 					frontendResource,
 					containerMapping,
 					transformations
 				);
 				break;
-			case "nat-gateway":
+			case "aws-nat-gateway":
 				this.transformNatGatewayConfiguration(
-					config as unknown as FrontendNATGatewayConfiguration,
+					config as FrontendNATGatewayConfiguration & Record<string, any>,
 					frontendResource,
 					containerMapping,
 					transformations
 				);
 				break;
-			case "route-table":
+			case "aws-route-table":
 				this.transformRouteTableConfiguration(
-					config as unknown as FrontendRouteTableConfiguration,
+					config as FrontendRouteTableConfiguration & Record<string, any>,
 					frontendResource,
 					containerMapping,
 					transformations
 				);
 				break;
-			case "s3":
-				this.transformS3Configuration(config, transformations);
+			case "aws-s3":
+				this.transformS3Configuration(
+					config as FrontendS3Configuration & Record<string, any>,
+					transformations
+				);
+				break;
+			case "aws-rds":
+				this.transformRdsConfiguration(
+					config as FrontendRDSConfiguration & Record<string, any>,
+					transformations
+				);
 				break;
 		}
-
-		// Clean up any remaining legacy fields (in case they exist)
-		// Most cleanup is no longer needed since frontend sends correct format
 
 		// Ensure tags exist
 		if (!config.tags) {
@@ -482,23 +450,30 @@ export class FrontendArchitectureTransformerService {
 		}
 
 		// Add resource identification tags
-		config.tags.Name = frontendResource.name;
-		config.tags.ResourceId = frontendResource.id;
+		config.tags.name = frontendResource.name;
+		config.tags.resource_id = frontendResource.id;
 
 		return config;
 	}
 
 	/**
-	 * Transform VPC configuration
+	 * Validate and normalize VPC configuration
+	 *
+	 * Ensures required VPC fields exist with proper defaults:
+	 * - enable_dns_support: defaults to true (required for most AWS services)
+	 * - enable_dns_hostnames: defaults to false
+	 *
+	 * @param {FrontendVPCConfiguration} config - VPC configuration to validate
+	 * @param {string[]} transformations - Array to log applied transformations
+	 * @returns {void} Modifies config in place
 	 */
 	private static transformVpcConfiguration(
-		config: FrontendVPCConfiguration & Record<string, any>,
+		config: FrontendVPCConfiguration,
 		transformations: string[]
 	): void {
-		// Frontend now sends snake_case format - minimal transformation needed
-		// Just ensure defaults and validate structure
 		if (config.enable_dns_support === undefined) {
 			config.enable_dns_support = true;
+			transformations.push("Set enable_dns_support to true");
 		}
 		if (config.enable_dns_hostnames === undefined) {
 			config.enable_dns_hostnames = false;
@@ -506,7 +481,17 @@ export class FrontendArchitectureTransformerService {
 	}
 
 	/**
-	 * Transform subnet configuration
+	 * Validate and normalize subnet configuration
+	 *
+	 * Ensures:
+	 * - subnet_type is set based on resource type (public/private)
+	 * - vpc_id reference is resolved from parent container if not explicitly set
+	 *
+	 * @param {FrontendSubnetConfiguration & Record<string, any>} config - Subnet configuration to validate
+	 * @param {FrontendResource} frontendResource - The frontend resource being transformed
+	 * @param {Map<string, FrontendResource>} containerMapping - Container resources for VPC resolution
+	 * @param {string[]} transformations - Array to log applied transformations
+	 * @returns {void} Modifies config in place
 	 */
 	private static transformSubnetConfiguration(
 		config: FrontendSubnetConfiguration & Record<string, any>,
@@ -514,17 +499,10 @@ export class FrontendArchitectureTransformerService {
 		containerMapping: Map<string, FrontendResource>,
 		transformations: string[]
 	): void {
-		// Frontend now sends snake_case - minimal transformation needed
-
-		// Ensure subnet_type is set
 		if (!config.subnet_type) {
-			if (frontendResource.resource_type.includes("public")) {
-				config.subnet_type = "public";
-			} else if (frontendResource.resource_type.includes("private")) {
-				config.subnet_type = "private";
-			} else {
-				config.subnet_type = "private"; // Default to private for security
-			}
+			config.subnet_type = frontendResource.resource_type.includes("public")
+				? "public"
+				: "private";
 			transformations.push(`Set subnet_type: ${config.subnet_type}`);
 		}
 
@@ -539,7 +517,19 @@ export class FrontendArchitectureTransformerService {
 	}
 
 	/**
-	 * Transform EC2 configuration
+	 * Validate and normalize EC2 instance configuration
+	 *
+	 * Ensures:
+	 * - root_block_device exists with defaults (8GB gp3 volume)
+	 * - ebs_block_device array is initialized
+	 * - security_group_ids array is initialized
+	 * - subnet_id reference is resolved from parent container if not set
+	 *
+	 * @param {FrontendEC2Configuration & Record<string, any>} config - EC2 configuration to validate
+	 * @param {FrontendResource} frontendResource - The frontend resource being transformed
+	 * @param {Map<string, FrontendResource>} containerMapping - Container resources for subnet resolution
+	 * @param {string[]} transformations - Array to log applied transformations
+	 * @returns {void} Modifies config in place
 	 */
 	private static transformEc2Configuration(
 		config: FrontendEC2Configuration & Record<string, any>,
@@ -575,13 +565,24 @@ export class FrontendArchitectureTransformerService {
 			const parent = containerMapping.get(frontendResource.parent_id);
 			if (parent && parent.resource_type.includes("subnet")) {
 				config.subnet_id = parent.id;
-				transformations.push(`Added subnet reference from parent: ${parent.id}`);
+				transformations.push(
+					`Added subnet reference from parent: ${parent.id}`
+				);
 			}
 		}
 	}
 
 	/**
-	 * Transform security group configuration
+	 * Validate and normalize security group configuration
+	 *
+	 * Ensures:
+	 * - description field exists with default value
+	 * - ingress_rules array is initialized
+	 * - egress_rules array is initialized
+	 *
+	 * @param {FrontendSecurityGroupConfiguration & Record<string, any>} config - Security group configuration
+	 * @param {string[]} transformations - Array to log applied transformations
+	 * @returns {void} Modifies config in place
 	 */
 	private static transformSecurityGroupConfiguration(
 		config: FrontendSecurityGroupConfiguration & Record<string, any>,
@@ -605,10 +606,17 @@ export class FrontendArchitectureTransformerService {
 	}
 
 	/**
-	 * Transform S3 configuration
+	 * Validate and normalize S3 bucket configuration
+	 *
+	 * Currently performs minimal validation as frontend sends correct format.
+	 * Kept as placeholder for future validation requirements.
+	 *
+	 * @param {FrontendS3Configuration & Record<string, any>} config - S3 configuration
+	 * @param {string[]} transformations - Array to log applied transformations
+	 * @returns {void} Modifies config in place
 	 */
 	private static transformS3Configuration(
-		config: Record<string, any>,
+		config: FrontendS3Configuration & Record<string, any>,
 		transformations: string[]
 	): void {
 		// Frontend now sends snake_case - minimal transformation needed
@@ -616,7 +624,34 @@ export class FrontendArchitectureTransformerService {
 	}
 
 	/**
-	 * Transform Internet Gateway configuration
+	 * Validate and normalize RDS database configuration
+	 *
+	 * Currently performs minimal validation as frontend sends correct format.
+	 * Kept as placeholder for future validation requirements.
+	 *
+	 * @param {FrontendRDSConfiguration & Record<string, any>} config - RDS configuration
+	 * @param {string[]} transformations - Array to log applied transformations
+	 * @returns {void} Modifies config in place
+	 */
+	private static transformRdsConfiguration(
+		config: FrontendRDSConfiguration & Record<string, any>,
+		transformations: string[]
+	): void {
+		// Frontend now sends snake_case - minimal transformation needed
+		// Configuration is already in correct format
+	}
+
+	/**
+	 * Validate and normalize Internet Gateway configuration
+	 *
+	 * Currently performs minimal validation as frontend sends correct format.
+	 * Kept as placeholder for future validation requirements.
+	 *
+	 * @param {FrontendInternetGatewayConfiguration & Record<string, any>} config - IGW configuration
+	 * @param {FrontendResource} frontendResource - The frontend resource being transformed
+	 * @param {Map<string, FrontendResource>} containerMapping - Container resources for reference
+	 * @param {string[]} transformations - Array to log applied transformations
+	 * @returns {void} Modifies config in place
 	 */
 	private static transformInternetGatewayConfiguration(
 		config: FrontendInternetGatewayConfiguration & Record<string, any>,
@@ -629,7 +664,17 @@ export class FrontendArchitectureTransformerService {
 	}
 
 	/**
-	 * Transform NAT Gateway configuration
+	 * Validate and normalize NAT Gateway configuration
+	 *
+	 * Ensures:
+	 * - connectivity_type defaults to 'public'
+	 * - create_eip is set to true for public NAT Gateways without allocation_id
+	 *
+	 * @param {FrontendNATGatewayConfiguration & Record<string, any>} config - NAT Gateway configuration
+	 * @param {FrontendResource} frontendResource - The frontend resource being transformed
+	 * @param {Map<string, FrontendResource>} containerMapping - Container resources for reference
+	 * @param {string[]} transformations - Array to log applied transformations
+	 * @returns {void} Modifies config in place
 	 */
 	private static transformNatGatewayConfiguration(
 		config: FrontendNATGatewayConfiguration & Record<string, any>,
@@ -652,12 +697,26 @@ export class FrontendArchitectureTransformerService {
 			config.create_eip === undefined
 		) {
 			config.create_eip = true;
-			transformations.push("Set default create_eip: true for public NAT Gateway");
+			transformations.push(
+				"Set default create_eip: true for public NAT Gateway"
+			);
 		}
 	}
 
 	/**
-	 * Transform Route Table configuration
+	 * Validate and normalize Route Table configuration
+	 *
+	 * Ensures:
+	 * - routes field is a map (not array)
+	 * - associations field is a map (converts from array if needed)
+	 *
+	 * Backend requires map structure for Terraform compatibility.
+	 *
+	 * @param {FrontendRouteTableConfiguration & Record<string, any>} config - Route table configuration
+	 * @param {FrontendResource} frontendResource - The frontend resource being transformed
+	 * @param {Map<string, FrontendResource>} containerMapping - Container resources for reference
+	 * @param {string[]} transformations - Array to log applied transformations
+	 * @returns {void} Modifies config in place
 	 */
 	private static transformRouteTableConfiguration(
 		config: FrontendRouteTableConfiguration & Record<string, any>,
@@ -668,7 +727,11 @@ export class FrontendArchitectureTransformerService {
 		// Frontend now sends snake_case - minimal transformation needed
 
 		// Ensure routes is a map (not array)
-		if (!config.routes || typeof config.routes !== "object" || Array.isArray(config.routes)) {
+		if (
+			!config.routes ||
+			typeof config.routes !== "object" ||
+			Array.isArray(config.routes)
+		) {
 			config.routes = {};
 			transformations.push("Initialized routes as empty map");
 		}
@@ -676,11 +739,15 @@ export class FrontendArchitectureTransformerService {
 		// Ensure associations is a map (not array)
 		if (config.associations && Array.isArray(config.associations)) {
 			// Convert array to map
-			const associationsMap: Record<string, any> = {};
-			config.associations.forEach((assoc: any, index: number) => {
-				const key = assoc.subnet_id ? `subnet_${assoc.subnet_id}` : `association_${index}`;
-				associationsMap[key] = assoc;
-			});
+			const associationsMap: Record<string, RouteTableAssociation> = {};
+			config.associations.forEach(
+				(assoc: RouteTableAssociation, index: number) => {
+					const key = assoc.subnet_id
+						? `subnet_${assoc.subnet_id}`
+						: `association_${index}`;
+					associationsMap[key] = assoc;
+				}
+			);
 			config.associations = associationsMap;
 			transformations.push("Converted associations array to map format");
 		} else if (!config.associations) {
@@ -691,6 +758,14 @@ export class FrontendArchitectureTransformerService {
 
 	/**
 	 * Find VPC for a given resource by traversing parent containers
+	 *
+	 * Walks up the parent hierarchy to find the containing VPC. Used when resources
+	 * don't explicitly specify vpc_id but need it for configuration.
+	 *
+	 * @param {FrontendResource} resource - The resource to find VPC for
+	 * @param {Map<string, FrontendResource>} containerMapping - Map of container resources
+	 *
+	 * @returns {FrontendResource | undefined} The VPC resource if found, undefined otherwise
 	 */
 	private static findVpcForNode(
 		resource: FrontendResource,
@@ -713,59 +788,23 @@ export class FrontendArchitectureTransformerService {
 	}
 
 	/**
-	 * Check if a resource is contained within another container
-	 */
-	private static isNodeInContainer(
-		resource: FrontendResource,
-		container: FrontendResource
-	): boolean {
-		// Simple position-based containment check
-		if (resource.position && container.position && container.dimensions) {
-			const resourceX = resource.position.x;
-			const resourceY = resource.position.y;
-			const containerX = container.position.x;
-			const containerY = container.position.y;
-			const containerWidth = container.dimensions.width;
-			const containerHeight = container.dimensions.height;
-
-			return (
-				resourceX >= containerX &&
-				resourceX <= containerX + containerWidth &&
-				resourceY >= containerY &&
-				resourceY <= containerY + containerHeight
-			);
-		}
-
-		return false;
-	}
-
-	/**
-	 * Determine if a container resource should be converted to a service resource
-	 */
-	private static shouldConvertContainerToService(
-		containerResource: FrontendResource
-	): boolean {
-		// Convert container resources that represent actual AWS resources
-		// Support both 'vpc' and 'aws-vpc' formats
-		const convertibleTypes = [
-			"vpc",
-			"aws-vpc",
-			"subnet",
-			"aws-subnet",
-			"aws-private-subnet",
-			"aws-public-subnet",
-			"security-group",
-			"aws-security-group",
-		];
-
-		return convertibleTypes.includes(containerResource.resource_type);
-	}
-
-	/**
 	 * Transform connections from frontend to backend format
+	 *
+	 * Converts frontend connection definitions to backend format and validates that
+	 * source and target resources exist. Only transforms explicit connections sent by
+	 * frontend - does not create implicit connections from parent-child relationships
+	 * as those are already captured via parent_id field.
+	 *
+	 * @param {FrontendConnection[]} frontendConnections - Array of frontend connection objects
+	 * @param {ArchitectureResource[]} transformedResources - Already transformed resources
+	 * @param {string[]} warnings - Array to accumulate warnings
+	 *
+	 * @returns {Object} Transformation result
+	 * @returns {NodeConnection[]} result.transformedConnections - Backend-formatted connections
+	 * @returns {string[]} result.connectionWarnings - Warnings from connection transformation
 	 */
 	private static transformConnections(
-		frontendConnections: any[],
+		frontendConnections: FrontendConnection[],
 		transformedResources: ArchitectureResource[],
 		warnings: string[]
 	): {
@@ -783,14 +822,11 @@ export class FrontendArchitectureTransformerService {
 					id:
 						frontendConnection.id ||
 						`connection-${transformedConnections.length}`,
-					source: frontendConnection.source || frontendConnection.sourceId,
-					target: frontendConnection.target || frontendConnection.targetId,
-					sourceHandle: frontendConnection.sourceHandle,
-					targetHandle: frontendConnection.targetHandle,
-					type:
-						frontendConnection.type ||
-						frontendConnection.connectionType ||
-						"dependency",
+					source: frontendConnection.source,
+					target: frontendConnection.target,
+					sourceHandle: frontendConnection.source_handle,
+					targetHandle: frontendConnection.target_handle,
+					type: frontendConnection.type,
 				};
 
 				// Validate that source and target resources exist
@@ -810,25 +846,10 @@ export class FrontendArchitectureTransformerService {
 
 				transformedConnections.push(connection);
 			} catch (error) {
-				const errorMessage = `Failed to transform connection: ${error instanceof Error ? error.message : "Unknown error"
-					}`;
+				const errorMessage = `Failed to transform connection: ${
+					error instanceof Error ? error.message : "Unknown error"
+				}`;
 				connectionWarnings.push(errorMessage);
-			}
-		}
-
-		// Add implicit connections based on parent-child relationships
-		for (const resource of transformedResources) {
-			if (resource.parent_id) {
-				const parentExists = resourceIds.has(resource.parent_id);
-				if (parentExists) {
-					const implicitConnection: NodeConnection = {
-						id: `implicit-${resource.id}-${resource.parent_id}`,
-						source: resource.parent_id,
-						target: resource.id,
-						type: "contains",
-					};
-					transformedConnections.push(implicitConnection);
-				}
 			}
 		}
 
@@ -839,95 +860,78 @@ export class FrontendArchitectureTransformerService {
 	}
 
 	/**
-	 * Create an empty architecture structure
-	 */
-	private static createEmptyArchitecture(): ArchitectureData {
-		return {
-			metadata: {
-				name: "Empty Architecture",
-				description: "Failed to transform architecture",
-				version: "1.0.0",
-				createdAt: new Date().toISOString(),
-				lastModified: new Date().toISOString(),
-				provider: "aws",
-			},
-			resources: [],
-			connections: [],
-			variables: {},
-			outputs: {},
-		};
-	}
-
-	/**
 	 * Validate frontend architecture data structure
+	 *
+	 * Performs structural validation on frontend data before transformation.
+	 * Checks for required fields and proper data types.
+	 *
+	 * @param {unknown} data - Frontend architecture data to validate (unknown type for runtime validation)
+	 *
+	 * @returns {Object} Validation result
+	 * @returns {boolean} result.valid - True if data is valid, false otherwise
+	 * @returns {string[]} result.errors - Critical validation errors
+	 * @returns {string[]} result.warnings - Non-critical issues
 	 */
-	// TODO: Enhance validation rules as by declaring the type for data for the frontend format
-	static validateFrontendData(data: any): { valid: boolean; errors: string[]; warnings: string[] } {
+	static validateFrontendData(data: unknown): {
+		valid: boolean;
+		errors: string[];
+		warnings: string[];
+	} {
 		const errors: string[] = [];
 		const warnings: string[] = [];
 
-		console.log('[VALIDATOR] Starting validation');
-		console.log('[VALIDATOR] Data type:', typeof data);
-		console.log('[VALIDATOR] Has metadata:', !!data?.metadata);
-		console.log('[VALIDATOR] Has resources:', !!data?.resources);
-		console.log('[VALIDATOR] Resources is array:', Array.isArray(data?.resources));
-		console.log('[VALIDATOR] Resources count:', data?.resources?.length || 0);
-
-		if (!data) {
+		if (!data || typeof data !== 'object') {
 			errors.push("Architecture data is required");
-			console.log('[VALIDATOR] ❌ No data provided');
 			return { valid: false, errors, warnings };
 		}
 
-		if (!data.metadata) {
+		// Type guard: narrow unknown to a usable type
+		const archData = data as Record<string, any>;
+
+		if (!archData.metadata) {
 			errors.push("Metadata is required");
 		} else {
-			if (!data.metadata.name) {
+			if (!archData.metadata.name) {
 				errors.push("Metadata name is required");
 			}
-			if (!data.metadata.provider) {
+			if (!archData.metadata.provider) {
 				errors.push("Metadata provider is required");
 			}
 		}
 
 		// Check resources
-		if (!data.resources || !Array.isArray(data.resources)) {
+		if (!archData.resources || !Array.isArray(archData.resources)) {
 			errors.push("Resources array is required");
-			console.log('[VALIDATOR] ❌ Resources is not an array');
-		} else if (data.resources.length === 0) {
+		} else if (archData.resources.length === 0) {
 			errors.push("At least one resource is required");
-			console.log('[VALIDATOR] ❌ No resources found');
 		}
 
-		// Validate individual resources - check both old and new field names
-		for (const [index, resource] of (data.resources || []).entries()) {
+		// Validate individual resources
+		for (const [index, resource] of (archData.resources || []).entries()) {
 			if (!resource.id) {
 				errors.push(`Resource at index ${index} is missing id`);
 			}
-			// Check for both old (resourceType) and new (resource_type) field names
-			if (!resource.resourceType && !resource.resource_type) {
-				errors.push(`Resource ${resource.id || index} is missing resourceType/resource_type`);
-				console.log('[VALIDATOR] Resource fields:', Object.keys(resource));
+			if (!resource.resource_type) {
+				errors.push(
+					`Resource ${resource.id || index} is missing resource_type`
+				);
+				console.log("[VALIDATOR] Resource fields:", Object.keys(resource));
 			}
-			// Check for both old (nodeType) and new (node_type) field names
-			if (!resource.nodeType && !resource.node_type) {
-				errors.push(`Resource ${resource.id || index} is missing nodeType/node_type`);
-			}
-
-			// Warn if using old field names
-			if (resource.nodeType || resource.resourceType || resource.parentId) {
-				warnings.push(`Resource ${resource.id || index} using old camelCase field names (nodeType/resourceType/parentId)`);
+			if (!resource.node_type) {
+				errors.push(
+					`Resource ${resource.id || index} is missing node_type`
+				);
 			}
 		}
 
-		console.log('[VALIDATOR] Validation complete:', {
+		console.log("[VALIDATOR] Validation complete:", {
 			valid: errors.length === 0,
 			errorsCount: errors.length,
-			warningsCount: warnings.length
+			warningsCount: warnings.length,
 		});
 
 		if (errors.length > 0) {
-			console.log('[VALIDATOR] ❌ Errors:', errors);
+			console.log("[VALIDATOR] ❌ Errors:", errors);
 		}
 
 		return { valid: errors.length === 0, errors, warnings };
@@ -935,8 +939,16 @@ export class FrontendArchitectureTransformerService {
 
 	/**
 	 * Generate transformation summary
+	 *
+	 * Creates a statistical summary of the transformation process, including counts
+	 * of resources by type, transformations applied, and any issues encountered.
+	 *
+	 * @param {TransformationResult} result - The transformation result to summarize
+	 * @returns {TransformationSummary} Summary object with statistics
 	 */
-	static generateTransformationSummary(result: TransformationResult): any {
+	static generateTransformationSummary(
+		result: TransformationResult
+	): TransformationSummary {
 		const summary = {
 			totalResources: result.transformed.resources.length,
 			totalConnections: result.transformed.connections.length,

@@ -36,24 +36,13 @@ The backend automatically detects and transforms frontend format to backend form
 
 ### Frontend Format (Top Level)
 
-The frontend format now uses `resources` as the key (previously used `nodes` in older versions):
+The frontend format uses `resources` as the key:
 
-**Current Frontend Format:**
+**Frontend Format:**
 ```json
 {
   "metadata": { ... },
-  "resources": [ ... ],    // Array of UI resources (current)
-  "connections": [ ... ],
-  "variables": {},
-  "outputs": {}
-}
-```
-
-**Legacy Frontend Format:**
-```json
-{
-  "metadata": { ... },
-  "nodes": [ ... ],        // Array of UI nodes (legacy - still supported)
+  "resources": [ ... ],    // Array of UI resources
   "connections": [ ... ],
   "variables": {},
   "outputs": {}
@@ -65,7 +54,7 @@ The frontend format now uses `resources` as the key (previously used `nodes` in 
 ```json
 {
   "metadata": { ... },
-  "nodes": [ ... ],        // Array of infrastructure nodes (backend internal format)
+  "resources": [ ... ],    // Array of infrastructure resources (backend internal format)
   "connections": [ ... ],
   "variables": {},
   "outputs": {}
@@ -73,9 +62,8 @@ The frontend format now uses `resources` as the key (previously used `nodes` in 
 ```
 
 **Key Changes**:
-- Frontend now uses `resources` (previously `nodes`)
-- Backend still uses `nodes` internally after transformation
-- Backend supports **both** frontend formats for backward compatibility
+- Frontend uses `resources` for UI-rich resource definitions
+- Backend uses `resources` internally after transformation
 
 ---
 
@@ -727,17 +715,17 @@ shouldRemoveField('instanceType', 't3.micro')              // false ✅
 | Category | Frontend | Backend | Status | Purpose |
 |----------|----------|---------|--------|---------|
 | **Root Structure** |
-| Root key | `nodes` | `resources` | Renamed | Semantic clarity |
+| Root key | `resources` | `resources` | ✅ Kept | Resource definitions |
 | Metadata | `metadata` | `metadata` | ✅ Kept | Project info |
 | Connections | `connections` | `connections` | ✅ Kept (cleaned) | Resource relationships |
 | Variables | `variables` | `variables` | ✅ Kept | Input variables |
 | Outputs | `outputs` | `outputs` | ✅ Kept | Output values |
-| **Node/Resource Level** |
+| **Resource Level** |
 | Identifier | `id` | `id` | ✅ Kept | Unique resource ID |
-| Type info | `nodeType` + `resourceType` | `type` | Simplified | Resource type |
+| Type info | `node_type` + `resource_type` | `resource_type` | Simplified | Resource type (UI node_type removed) |
 | Name | `name` | `name` | ✅ Kept | Resource name |
 | Configuration | `configuration` | `configuration` | ✅ Kept (cleaned) | Resource config |
-| Parent | `parentId` | `parentId` | ✅ Kept | Hierarchy |
+| Parent | `parent_id` | `parent_id` | ✅ Kept | Hierarchy |
 | UI icon | `icon` | N/A | ❌ Removed | Frontend rendering |
 | UI position | `position` | N/A | ❌ Removed | Canvas coordinates |
 | UI size | `dimensions` | N/A | ❌ Removed | Container sizing |
@@ -785,13 +773,13 @@ function transformFrontendToBackend(frontendData: FrontendArchitectureData): Bac
   return {
     metadata: frontendData.metadata,
 
-    // Transform nodes → resources
-    resources: frontendData.nodes.map(node => ({
-      id: node.id,
-      type: node.resourceType,  // resourceType → type
-      name: node.name,
-      configuration: cleanConfiguration(node.configuration),
-      ...(node.parentId && { parentId: node.parentId })
+    // Transform frontend resources to backend resources
+    resources: frontendData.resources.map(resource => ({
+      id: resource.id,
+      resource_type: resource.resource_type,
+      name: resource.name,
+      configuration: cleanConfiguration(resource.configuration),
+      ...(resource.parent_id && { parent_id: resource.parent_id })
     })),
 
     // Transform connections (remove UI properties)
@@ -846,16 +834,16 @@ function shouldRemoveField(key: string, value: any): boolean {
  * Detect if data is in frontend format
  */
 function isFrontendFormat(data: any): boolean {
-  if (!data?.metadata || !data?.nodes || !Array.isArray(data.nodes)) {
+  if (!data?.metadata || !data?.resources || !Array.isArray(data.resources)) {
     return false;
   }
 
-  // Check if any node has frontend-specific properties
-  return data.nodes.some((node: any) =>
-    node.nodeType &&
-    (node.nodeType === 'awsService' || node.nodeType === 'awsContainer') &&
-    node.resourceType &&
-    node.resourceType.startsWith('aws-')
+  // Check if any resource has frontend-specific properties (UI metadata)
+  return data.resources.some((resource: any) =>
+    resource.node_type &&
+    (resource.node_type === 'aws_service' || resource.node_type === 'aws_container') &&
+    resource.position &&
+    resource.icon
   );
 }
 ```
@@ -866,18 +854,17 @@ function isFrontendFormat(data: any): boolean {
 Input: Frontend Architecture Data
     ↓
 1. Detect Format
-    ├─ Check for: nodeType, icon, position properties
-    ├─ Check for: resourceType starting with "aws-"
+    ├─ Check for: node_type, icon, position properties
+    ├─ Check for: resource_type (frontend format indicator)
     └─ If frontend format detected → continue transformation
     ↓
 2. Transform Root Structure
-    ├─ Keep: metadata, variables, outputs
-    └─ Rename: nodes → resources
+    ├─ Keep: metadata, resources, variables, outputs
+    └─ Remove: UI-specific metadata from resources
     ↓
-3. Transform Each Node/Resource
-    ├─ Keep: id, name, parentId
-    ├─ Rename: resourceType → type
-    ├─ Remove: nodeType, icon, position, dimensions
+3. Transform Each Resource
+    ├─ Keep: id, resource_type, name, parent_id
+    ├─ Remove: node_type, icon, position, dimensions
     └─ Clean: configuration object
     ↓
 4. Clean Configuration
@@ -911,10 +898,10 @@ function safeTransform(frontendData: any): TransformResult {
     }
 
     // Check required fields
-    if (!frontendData.metadata || !frontendData.nodes) {
+    if (!frontendData.metadata || !frontendData.resources) {
       return {
         success: false,
-        error: 'Missing required fields: metadata or nodes',
+        error: 'Missing required fields: metadata or resources',
         transformed: null
       };
     }
@@ -961,16 +948,16 @@ function safeTransform(frontendData: any): TransformResult {
 ```typescript
 interface FrontendArchitectureData {
   metadata: ArchitectureMetadata;
-  nodes: FrontendNode[];
+  resources: FrontendResource[];
   connections: FrontendConnection[];
   variables?: Record<string, any>;
   outputs?: Record<string, any>;
 }
 
-interface FrontendNode {
+interface FrontendResource {
   id: string;
-  nodeType: 'awsService' | 'awsContainer';
-  resourceType: string;
+  node_type: 'aws_service' | 'aws_container';
+  resource_type: string;
   name: string;
   icon: string;
   position: {
@@ -982,7 +969,7 @@ interface FrontendNode {
     height: number;
   };
   configuration: Record<string, any>;
-  parentId?: string;
+  parent_id?: string;
 }
 
 interface FrontendConnection {
@@ -1008,10 +995,10 @@ interface BackendArchitectureData {
 
 interface BackendResource {
   id: string;
-  type: string;
+  resource_type: string;
   name: string;
   configuration: Record<string, any>;
-  parentId?: string;
+  parent_id?: string;
 }
 
 interface BackendConnection {
@@ -1046,18 +1033,17 @@ interface ArchitectureMetadata {
     "createdAt": "2025-12-18T10:00:00.000Z",
     "lastModified": "2025-12-18T10:00:00.000Z"
   },
-  "nodes": [
+  "resources": [
     {
       "id": "vpc-1",
-      "nodeType": "awsContainer",
-      "resourceType": "aws-vpc",
+      "node_type": "aws_container",
+      "resource_type": "aws-vpc",
       "name": "MyVPC",
       "icon": "/icons/vpc.svg",
       "position": { "x": 100, "y": 100 },
       "dimensions": { "width": 500, "height": 300 },
       "configuration": {
-        "awsVpcId": "AWS VPC",
-        "cidrBlock": "10.0.0.0/16"
+        "cidr_block": "10.0.0.0/16"
       }
     }
   ],
@@ -1078,10 +1064,10 @@ interface ArchitectureMetadata {
   "resources": [
     {
       "id": "vpc-1",
-      "type": "aws-vpc",
+      "resource_type": "aws-vpc",
       "name": "MyVPC",
       "configuration": {
-        "cidrBlock": "10.0.0.0/16"
+        "cidr_block": "10.0.0.0/16"
       }
     }
   ],
@@ -1094,31 +1080,29 @@ interface ArchitectureMetadata {
 **Frontend Input:**
 ```json
 {
-  "nodes": [
+  "resources": [
     {
       "id": "vpc-1",
-      "nodeType": "awsContainer",
-      "resourceType": "aws-vpc",
+      "node_type": "aws_container",
+      "resource_type": "aws-vpc",
       "name": "VPC",
       "icon": "/icons/vpc.svg",
       "position": { "x": 100, "y": 100 },
       "configuration": {
-        "awsVpcId": "AWS VPC",
-        "cidrBlock": "10.0.0.0/16"
+        "cidr_block": "10.0.0.0/16"
       }
     },
     {
       "id": "igw-1",
-      "nodeType": "awsService",
-      "resourceType": "aws-internet-gateway",
+      "node_type": "aws_service",
+      "resource_type": "aws-internet-gateway",
       "name": "IGW",
       "icon": "/icons/igw.svg",
       "position": { "x": 200, "y": 50 },
       "configuration": {
-        "awsInternetGatewayId": "AWS Internet Gateway",
-        "awsVpcId": "vpc-1"
+        "vpc_id": "vpc-1"
       },
-      "parentId": "vpc-1"
+      "parent_id": "vpc-1"
     }
   ],
   "connections": [
@@ -1140,20 +1124,20 @@ interface ArchitectureMetadata {
   "resources": [
     {
       "id": "vpc-1",
-      "type": "aws-vpc",
+      "resource_type": "aws-vpc",
       "name": "VPC",
       "configuration": {
-        "cidrBlock": "10.0.0.0/16"
+        "cidr_block": "10.0.0.0/16"
       }
     },
     {
       "id": "igw-1",
-      "type": "aws-internet-gateway",
+      "resource_type": "aws-internet-gateway",
       "name": "IGW",
       "configuration": {
-        "awsVpcId": "vpc-1"
+        "vpc_id": "vpc-1"
       },
-      "parentId": "vpc-1"
+      "parent_id": "vpc-1"
     }
   ],
   "connections": [

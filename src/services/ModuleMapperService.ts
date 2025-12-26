@@ -17,7 +17,7 @@ export interface ModuleDependency {
   level: number;
 }
 
-export interface ResourceMapping {
+export interface ModuleResourceMapping {
   nodeId: string;
   modulePath: string;
   moduleInstance: string;

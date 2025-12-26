@@ -1,6 +1,6 @@
 // Models
 export * from './models/Architecture.js';
-export * from './models/Response.js';
+export * from './data/Response.js';
 
 // Controllers
 export * from './controllers/HealthController.js';

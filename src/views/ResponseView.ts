@@ -1,4 +1,4 @@
-import { ApiResponse, HealthCheckResponse } from '../models/Response.js';
+import { ApiResponse, HealthCheckResponse } from '../data/Response.js';
 import { GeneratedTerraform, TerraformFile } from '../models/Architecture.js';
 
 export class ResponseView {

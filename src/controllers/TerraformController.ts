@@ -1,9 +1,17 @@
+/**
+ * TerraformController - Handles all Terraform-related API endpoints
+ *
+ * This controller provides endpoints for:
+ * - Generating Terraform configurations from architecture diagrams
+ * - Validating architecture data
+ * - Running Terraform plan/apply/destroy operations
+ * - Managing generated files and projects
+ */
+
 import { Request, Response } from "express";
 import { ArchitectureData } from "../models/Architecture.js";
-import { ArchitectureParserService } from "../services/ArchitectureParserService.js";
-import { FrontendArchitectureTransformerService } from "../services/FrontendArchitectureTransformerService.js";
-import { ModuleMapperService } from "../services/ModuleMapperService.js";
-import { ModularTerraformGeneratorService } from "../services/ModularTerraformGeneratorService.js";
+import { ArchitectureNormalizerService } from "../services/ArchitectureNormalizerService.js";
+import { SimplifiedTerraformGeneratorService } from "../services/SimplifiedTerraformGeneratorService.js";
 import { ModuleRegistryService } from "../services/ModuleRegistryService.js";
 import { FileService } from "../services/FileService.js";
 import { TerraformExecutionService } from "../services/TerraformExecutionService.js";
@@ -17,13 +25,15 @@ interface RequestWithId extends Request {
 export class TerraformController {
 	/**
 	 * Generate modular Terraform configuration from architecture data
+	 * Uses 3-stage optimized flow: Normalize → Generate → Persist
 	 */
 	static async generateModularTerraform(
 		req: RequestWithId,
 		res: Response
 	): Promise<void> {
 		const startTime = Date.now();
-		let projectName = "infrastructure"; // Default value for error logging
+		let projectName = "infrastructure";
+
 		try {
 			const {
 				architectureData,
@@ -33,167 +43,87 @@ export class TerraformController {
 				projectName?: string;
 			} = req.body;
 
-			projectName = reqProjectName; // Update for actual use
+			projectName = reqProjectName;
 
-			logger.terraform(LogLevel.INFO, 'Generating Terraform configuration', {
+			logger.terraform(LogLevel.INFO, "Generating Terraform configuration", {
 				requestId: req.requestId,
 				projectName,
 				resourcesCount: architectureData?.resources?.length || 0,
-				connectionsCount: architectureData?.connections?.length || 0
+				connectionsCount: architectureData?.connections?.length || 0,
 			});
 
 			if (!architectureData) {
-				logger.validation(LogLevel.WARN, 'Architecture data required', {
-					requestId: req.requestId
-				});
-
-				const errorResponse = ResponseView.error(
-					"Architecture data is required"
-				);
-				res.status(400).json(errorResponse);
-				return;
-			}
-
-			let processedArchitectureData: ArchitectureData;
-
-			const isFrontend = TerraformController.isFrontendFormat(architectureData);
-
-			if (isFrontend) {
-
-				logger.architecture(LogLevel.INFO, 'Detected frontend format', {
-					requestId: req.requestId
-				});
-
-				const frontendValidation =
-					FrontendArchitectureTransformerService.validateFrontendData(
-						architectureData
-					);
-
-				if (!frontendValidation.valid) {
-					console.log('❌ VALIDATION FAILED:', frontendValidation.errors);
-					const errorResponse = ResponseView.error(
-						"Frontend architecture validation failed",
-						frontendValidation.errors.join("; ")
-					);
-					res.status(400).json(errorResponse);
-					return;
-				}
-
-				// Transform frontend data to backend format
-				const transformationResult =
-					FrontendArchitectureTransformerService.transformToBackendFormat(
-						architectureData as any
-					);
-
-				if (transformationResult.errors.length > 0) {
-					const errorResponse = ResponseView.error(
-						"Frontend architecture transformation failed",
-						transformationResult.errors.join("; ")
-					);
-					res.status(400).json(errorResponse);
-					return;
-				}
-
-				processedArchitectureData = transformationResult.transformed;
-
-				logger.architecture(LogLevel.INFO, 'Frontend transformation completed', {
+				logger.validation(LogLevel.WARN, "Architecture data required", {
 					requestId: req.requestId,
-					resources: transformationResult.mappings.length,
-					warnings: transformationResult.warnings.length
 				});
-			} else {
-				// Backend Format (Direct)
-				logger.architecture(LogLevel.INFO, 'Using backend format directly', {
-					requestId: req.requestId
-				});
-
-				processedArchitectureData = architectureData as ArchitectureData;
+				res.status(400).json(ResponseView.error("Architecture data is required"));
+				return;
 			}
 
-			const parsedArchitecture = ArchitectureParserService.parseArchitecture(
-				processedArchitectureData
+			// STAGE 1: Unified Architecture Normalization
+			// - Auto-detects format (frontend/backend)
+			// - Single-pass resource normalization
+			// - Builds dependency graph once
+			// - Pre-computes module references
+			// - Validates architecture
+			const normalizationResult = await ArchitectureNormalizerService.normalizeArchitecture(
+				architectureData,
+				projectName
 			);
 
-			console.log('Parsed architecture:', {
-				nodesCount: parsedArchitecture.nodes.length,
-				connectionsCount: parsedArchitecture.connections.length,
-				validationValid: parsedArchitecture.validation.valid,
-				errorsCount: parsedArchitecture.validation.errors.length,
-				warningsCount: parsedArchitecture.validation.warnings.length
-			});
+			const { architecture, warnings: normWarnings, errors: normErrors } = normalizationResult;
 
-			if (parsedArchitecture.nodes.length > 0) {
-				console.log('First parsed node:', JSON.stringify(parsedArchitecture.nodes[0], null, 2));
+			if (normErrors.length > 0) {
+				res.status(400).json(ResponseView.error(
+					"Architecture normalization failed",
+					normErrors.join("; ")
+				));
+				return;
 			}
 
-			if (!parsedArchitecture.validation.valid) {
-				console.log('❌ ARCHITECTURE VALIDATION FAILED:', parsedArchitecture.validation.errors);
-				const errorResponse = ResponseView.error(
+			if (!architecture.validation.valid) {
+				res.status(400).json(ResponseView.error(
 					"Architecture validation failed",
-					parsedArchitecture.validation.errors.map((e) => e.message).join("; ")
-				);
-				res.status(400).json(errorResponse);
+					architecture.validation.errors.map(e => e.message).join("; ")
+				));
 				return;
 			}
-			console.log('✓ Architecture parsing completed');
 
-			// Step 2: Map architecture to modules
-			console.log('========== MODULE MAPPING ==========');
-			const mappingResult = await ModuleMapperService.mapArchitectureToModules(
-				parsedArchitecture
+			logger.architecture(LogLevel.INFO, "Normalization completed", {
+				requestId: req.requestId,
+				resources: architecture.resources.length,
+				connections: architecture.connections.length,
+				warnings: normWarnings.length,
+			});
+
+			// STAGE 2: Direct Terraform Generation
+			// - Uses pre-computed module references
+			// - Generates all .tf files in single pass
+			const terraformResult = await SimplifiedTerraformGeneratorService.generateTerraformConfiguration(
+				architecture,
+				projectName
 			);
 
-			console.log('Mapping result:', {
-				modulesCount: mappingResult.modules.length,
-				errorsCount: mappingResult.errors.length,
-				warningsCount: mappingResult.warnings.length
-			});
-
-			if (mappingResult.modules.length > 0) {
-				console.log('First module:', JSON.stringify(mappingResult.modules[0], null, 2));
-			}
-
-			if (mappingResult.errors.length > 0) {
-				console.log('❌ MODULE MAPPING ERRORS:', mappingResult.errors);
-				const errorResponse = ResponseView.error(
-					"Failed to map architecture to modules",
-					mappingResult.errors.join("; ")
-				);
-				res.status(500).json(errorResponse);
-				return;
-			}
-			console.log('✓ Module mapping completed');
-
-			// Step 3: Generate Terraform configuration
-			console.log('========== TERRAFORM GENERATION ==========');
-			const terraformResult =
-				ModularTerraformGeneratorService.generateTerraformConfiguration(
-					mappingResult,
-					parsedArchitecture.metadata,
-					projectName
-				);
-
-			console.log('Terraform generation result:', {
+			logger.terraform(LogLevel.INFO, "Terraform generation completed", {
+				requestId: req.requestId,
 				mainTfLength: terraformResult.mainTf.length,
-				providersVersionsTfLength: terraformResult.providersVersionsTf.length,
-				variablesTfLength: terraformResult.variablesTf?.length || 0,
-				outputsTfLength: terraformResult.outputsTf?.length || 0
+				filesGenerated: terraformResult.files.length,
 			});
-			console.log('Generated main.tf preview (first 500 chars):', terraformResult.mainTf.substring(0, 500));
 
-			// Step 4: Save generated files
+			// STAGE 3: File Persistence
 			const savedFiles = await FileService.saveGeneratedTerraformFiles(
 				terraformResult,
 				projectName
 			);
 
-			// Step 5: Validate generated Terraform
-			const validationResult =
-				ModularTerraformGeneratorService.validateTerraformSyntax(
-					terraformResult.mainTf
-				);
+			// Validate generated Terraform syntax
+			const validationResult = SimplifiedTerraformGeneratorService.validateTerraformSyntax(
+				terraformResult.mainTf
+			);
 
-			const response = ResponseView.success(
+			const duration = Date.now() - startTime;
+
+			res.json(ResponseView.success(
 				{
 					project: {
 						name: projectName,
@@ -209,42 +139,37 @@ export class TerraformController {
 						errors: validationResult.errors,
 					},
 					architectureValidation: {
-						valid: parsedArchitecture.validation.valid,
-						errorCount: parsedArchitecture.validation.errors.length,
-						warningCount: parsedArchitecture.validation.warnings?.length || 0,
+						valid: architecture.validation.valid,
+						errorCount: architecture.validation.errors.length,
+						warningCount: architecture.validation.warnings.length,
 					},
 					moduleMapping: {
-						modulesGenerated: mappingResult.modules.length,
-						dependencies: mappingResult.dependencies.length,
-						warnings: mappingResult.warnings,
+						modulesGenerated: architecture.resources.length,
+						dependencies: architecture.dependencyOrder.length,
+						warnings: normWarnings,
+					},
+					performance: {
+						durationMs: duration,
 					},
 					status: "success",
 				},
-				"Modular Terraform configuration generated successfully"
-			);
+				"Terraform configuration generated successfully"
+			));
 
-			res.json(response);
 		} catch (error) {
 			const duration = Date.now() - startTime;
-
-			console.log('\n❌❌❌ CAUGHT ERROR IN CONTROLLER ❌❌❌');
-			console.log('Error type:', error?.constructor?.name);
-			console.log('Error message:', error instanceof Error ? error.message : String(error));
-			console.log('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
-			console.log('Duration before error:', duration, 'ms');
-
-			logger.error('Error generating Terraform', {
+			logger.error("Error generating Terraform", {
 				requestId: req.requestId,
 				projectName,
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.TERRAFORM
+				duration,
+				category: LogCategory.TERRAFORM,
 			});
 
-			const errorResponse = ResponseView.error(
-				"Failed to generate modular Terraform configuration",
+			res.status(500).json(ResponseView.error(
+				"Failed to generate Terraform configuration",
 				error instanceof Error ? error.message : "Unknown error"
-			);
-			res.status(500).json(errorResponse);
+			));
 		}
 	}
 
@@ -255,56 +180,48 @@ export class TerraformController {
 		req: RequestWithId,
 		res: Response
 	): Promise<void> {
-		const startTime = Date.now();
-
 		try {
-			const { architectureData }: { architectureData: ArchitectureData } =
-				req.body;
+			const { architectureData }: { architectureData: ArchitectureData } = req.body;
 
-			logger.validation(LogLevel.INFO, 'Validating architecture', {
-				requestId: req.requestId
+			logger.validation(LogLevel.INFO, "Validating architecture", {
+				requestId: req.requestId,
 			});
 
 			if (!architectureData) {
-				logger.validation(LogLevel.WARN, 'Architecture data required', {
-					requestId: req.requestId
+				logger.validation(LogLevel.WARN, "Architecture data required", {
+					requestId: req.requestId,
 				});
-
-				const errorResponse = ResponseView.error(
-					"Architecture data is required"
-				);
-				res.status(400).json(errorResponse);
+				res.status(400).json(ResponseView.error("Architecture data is required"));
 				return;
 			}
 
-			const parsedArchitecture =
-				ArchitectureParserService.parseArchitecture(architectureData);
+			const normalizationResult = await ArchitectureNormalizerService.normalizeArchitecture(
+				architectureData,
+				"validation"
+			);
 
-			const response = ResponseView.success(
+			res.json(ResponseView.success(
 				{
-					validation: parsedArchitecture.validation,
-					nodes: parsedArchitecture.nodes.length,
-					connections: parsedArchitecture.connections.length,
-					metadata: parsedArchitecture.metadata,
+					validation: normalizationResult.architecture.validation,
+					resources: normalizationResult.architecture.resources.length,
+					connections: normalizationResult.architecture.connections.length,
+					metadata: normalizationResult.architecture.metadata,
+					warnings: normalizationResult.warnings,
 				},
 				"Architecture validation completed"
-			);
+			));
 
-			res.json(response);
 		} catch (error) {
-			const duration = Date.now() - startTime;
-
-			logger.error('Error validating architecture', {
+			logger.error("Error validating architecture", {
 				requestId: req.requestId,
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.VALIDATION
+				category: LogCategory.VALIDATION,
 			});
 
-			const errorResponse = ResponseView.error(
+			res.status(500).json(ResponseView.error(
 				"Failed to validate architecture",
 				error instanceof Error ? error.message : "Unknown error"
-			);
-			res.status(500).json(errorResponse);
+			));
 		}
 	}
 
@@ -315,66 +232,51 @@ export class TerraformController {
 		req: RequestWithId,
 		res: Response
 	): Promise<void> {
-		const startTime = Date.now();
-
 		try {
-			const { architectureData }: { architectureData: ArchitectureData } =
-				req.body;
+			const { architectureData }: { architectureData: ArchitectureData } = req.body;
 
 			if (!architectureData) {
-				const errorResponse = ResponseView.error(
-					"Architecture data is required"
-				);
-				res.status(400).json(errorResponse);
+				res.status(400).json(ResponseView.error("Architecture data is required"));
 				return;
 			}
 
-			logger.validation(LogLevel.INFO, 'Validating dependencies', {
-				requestId: req.requestId
+			logger.validation(LogLevel.INFO, "Validating dependencies", {
+				requestId: req.requestId,
 			});
 
-			const parsedArchitecture =
-				ArchitectureParserService.parseArchitecture(architectureData);
-			const mappingResult = await ModuleMapperService.mapArchitectureToModules(
-				parsedArchitecture
+			const normalizationResult = await ArchitectureNormalizerService.normalizeArchitecture(
+				architectureData,
+				"dependency-validation"
 			);
+
+			const { architecture } = normalizationResult;
 
 			// Build dependency visualization
-			const dependencyGraph = this.buildDependencyVisualization(
-				parsedArchitecture.nodes,
-				mappingResult.dependencies
-			);
+			const dependencyGraph = this.buildDependencyVisualization(architecture);
 
-			const response = ResponseView.success(
+			res.json(ResponseView.success(
 				{
 					dependencyGraph,
-					circularDependencies: parsedArchitecture.validation.errors
-						.filter((e) => e.type === "invalid_dependency")
-						.map((e) => e.message),
-					dependencyLevels: mappingResult.dependencies.map((d) => ({
-						module: d.moduleId,
-						level: d.level,
-						dependsOn: d.dependsOn,
-					})),
+					circularDependencies: architecture.validation.errors
+						.filter(e => e.type === "invalid_dependency")
+						.map(e => e.message),
+					dependencyOrder: architecture.dependencyOrder,
+					resourceCount: architecture.resources.length,
 				},
 				"Dependency validation completed"
-			);
+			));
 
-			res.json(response);
 		} catch (error) {
-			const duration = Date.now() - startTime;
-
-			logger.error('Error validating dependencies', {
+			logger.error("Error validating dependencies", {
 				requestId: req.requestId,
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.VALIDATION
+				category: LogCategory.VALIDATION,
 			});
 
-			const errorResponse = ResponseView.error(
+			res.status(500).json(ResponseView.error(
 				"Failed to validate dependencies",
 				error instanceof Error ? error.message : "Unknown error"
-			);
-			res.status(500).json(errorResponse);
+			));
 		}
 	}
 
@@ -382,11 +284,9 @@ export class TerraformController {
 	 * Get available Terraform modules
 	 */
 	static async getAvailableModules(req: RequestWithId, res: Response): Promise<void> {
-		const startTime = Date.now();
-
 		try {
-			logger.module(LogLevel.INFO, 'Fetching available modules', {
-				requestId: req.requestId
+			logger.module(LogLevel.INFO, "Fetching available modules", {
+				requestId: req.requestId,
 			});
 
 			const modules = await ModuleRegistryService.getAvailableModules();
@@ -398,7 +298,7 @@ export class TerraformController {
 				return acc;
 			}, {} as Record<string, any[]>);
 
-			const response = ResponseView.success(
+			res.json(ResponseView.success(
 				{
 					modules,
 					modulesByCategory,
@@ -406,23 +306,19 @@ export class TerraformController {
 					categories: Object.keys(modulesByCategory),
 				},
 				"Available modules retrieved successfully"
-			);
+			));
 
-			res.json(response);
 		} catch (error) {
-			const duration = Date.now() - startTime;
-
-			logger.error('Error fetching modules', {
+			logger.error("Error fetching modules", {
 				requestId: req.requestId,
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.MODULE
+				category: LogCategory.MODULE,
 			});
 
-			const errorResponse = ResponseView.error(
+			res.status(500).json(ResponseView.error(
 				"Failed to fetch available modules",
 				error instanceof Error ? error.message : "Unknown error"
-			);
-			res.status(500).json(errorResponse);
+			));
 		}
 	}
 
@@ -434,113 +330,85 @@ export class TerraformController {
 			const { category, name } = req.params;
 
 			if (!category || !name) {
-				const errorResponse = ResponseView.error(
-					"Category and name are required"
-				);
-				res.status(400).json(errorResponse);
+				res.status(400).json(ResponseView.error("Category and name are required"));
 				return;
 			}
 
-			logger.module(LogLevel.INFO, 'Fetching module details', {
+			logger.module(LogLevel.INFO, "Fetching module details", {
 				requestId: req.requestId,
-				module: `${category}/${name}`
+				module: `${category}/${name}`,
 			});
 
 			const module = await ModuleRegistryService.getModule(category, name);
 			if (!module) {
-				const errorResponse = ResponseView.error(
-					`Module ${category}/${name} not found`
-				);
-				res.status(404).json(errorResponse);
+				res.status(404).json(ResponseView.error(`Module ${category}/${name} not found`));
 				return;
 			}
 
-			const metadata = await ModuleRegistryService.getModuleMetadata(
-				category,
-				name
-			);
+			const metadata = await ModuleRegistryService.getModuleMetadata(category, name);
 
-			const response = ResponseView.success(
-				{
-					module,
-					metadata,
-				},
+			res.json(ResponseView.success(
+				{ module, metadata },
 				"Module details retrieved successfully"
-			);
+			));
 
-			res.json(response);
 		} catch (error) {
 			logger.error("Error fetching module details", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.MODULE
+				category: LogCategory.MODULE,
 			});
-			const errorResponse = ResponseView.error(
+
+			res.status(500).json(ResponseView.error(
 				"Failed to fetch module details",
 				error instanceof Error ? error.message : "Unknown error"
-			);
-			res.status(500).json(errorResponse);
+			));
 		}
 	}
 
 	/**
 	 * Validate module configuration
 	 */
-	static async validateModuleConfiguration(
-		req: Request,
-		res: Response
-	): Promise<void> {
+	static async validateModuleConfiguration(req: Request, res: Response): Promise<void> {
 		try {
 			const { category, name, configuration } = req.body;
 
 			if (!category || !name || !configuration) {
-				const errorResponse = ResponseView.error(
-					"Category, name, and configuration are required"
-				);
-				res.status(400).json(errorResponse);
+				res.status(400).json(ResponseView.error("Category, name, and configuration are required"));
 				return;
 			}
 
 			logger.info(`Validating module configuration: ${category}/${name}`, {
-				category: LogCategory.VALIDATION
+				category: LogCategory.VALIDATION,
 			});
 
-			const validation =
-				await ModuleRegistryService.validateModuleConfiguration(
-					category,
-					name,
-					configuration
-				);
-
-			const response = ResponseView.success(
-				{
-					validation,
-					module: `${category}/${name}`,
-					configuration,
-				},
-				"Module configuration validation completed"
+			const validation = await ModuleRegistryService.validateModuleConfiguration(
+				category,
+				name,
+				configuration
 			);
 
-			res.json(response);
+			res.json(ResponseView.success(
+				{ validation, module: `${category}/${name}`, configuration },
+				"Module configuration validation completed"
+			));
+
 		} catch (error) {
 			logger.error("Error validating module configuration", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.VALIDATION
+				category: LogCategory.VALIDATION,
 			});
-			const errorResponse = ResponseView.error(
+
+			res.status(500).json(ResponseView.error(
 				"Failed to validate module configuration",
 				error instanceof Error ? error.message : "Unknown error"
-			);
-			res.status(500).json(errorResponse);
+			));
 		}
 	}
 
 	/**
 	 * Generate Terraform plan with actual terraform execution
 	 */
-	static async generateTerraformPlan(
-		req: Request,
-		res: Response
-	): Promise<void> {
+	static async generateTerraformPlan(req: Request, res: Response): Promise<void> {
 		try {
 			const {
 				architectureData,
@@ -551,99 +419,59 @@ export class TerraformController {
 			} = req.body;
 
 			if (!architectureData) {
-				const errorResponse = ResponseView.error(
-					"Architecture data is required"
-				);
-				res.status(400).json(errorResponse);
+				res.status(400).json(ResponseView.error("Architecture data is required"));
 				return;
 			}
 
 			logger.info(`Starting Terraform plan: ${projectName}`, {
 				category: LogCategory.TERRAFORM,
-				projectName
+				projectName,
 			});
 
-			// Check if project exists and get latest version
+			// Check if project exists
 			const existingProjectPath = await FileService.getProjectPath(projectName);
-			const latestVersionId = await FileService.getLatestProjectVersion(
-				projectName
-			);
+			const latestVersionId = await FileService.getLatestProjectVersion(projectName);
 
 			if (!existingProjectPath || !latestVersionId) {
-				logger.error(`Project not found: ${projectName}`, {
-					category: LogCategory.FILE,
-					projectName
-				});
-
-				// List available projects for debugging
 				const projects = await FileService.getAvailableProjects();
-				const projectVersions = await FileService.getProjectVersions(
-					projectName
-				);
-				logger.info("Available projects for debugging", {
-					category: LogCategory.FILE,
-					projects: projects.map((p) => p.name).join(', ')
-				});
-
-				const errorResponse = ResponseView.error(
+				res.status(404).json(ResponseView.error(
 					`Project '${projectName}' not found. Please generate Terraform files first.`,
-					`Available projects: ${projects.map((p) => p.name).join(", ")}`
-				);
-				res.status(404).json(errorResponse);
+					`Available projects: ${projects.map(p => p.name).join(", ")}`
+				));
 				return;
 			}
 
-			logger.info(`Using version ${latestVersionId}`, {
-				category: LogCategory.FILE,
-				projectName,
-				version: latestVersionId
-			});
-
-			// Validate that the project has necessary Terraform files
-			const hasMainTf = await FileService.projectFileExists(
-				projectName,
-				"main.tf"
-			);
-			logger.debug(`main.tf exists: ${hasMainTf}`, {
-				category: LogCategory.FILE,
-				projectName
-			});
-
+			// Validate project has necessary files
+			const hasMainTf = await FileService.projectFileExists(projectName, "main.tf");
 			if (!hasMainTf) {
-				const errorResponse = ResponseView.error(
+				res.status(400).json(ResponseView.error(
 					`Project '${projectName}' is missing required Terraform files. Please regenerate the project.`
-				);
-				res.status(400).json(errorResponse);
+				));
 				return;
-			} // Process architecture data for validation only (not for regeneration)
-			let processedArchitectureData: ArchitectureData;
-
-			if (TerraformController.isFrontendFormat(architectureData)) {
-				const transformationResult =
-					FrontendArchitectureTransformerService.transformToBackendFormat(
-						architectureData as any
-					);
-				if (transformationResult.errors.length > 0) {
-					const errorResponse = ResponseView.error(
-						"Frontend architecture transformation failed",
-						transformationResult.errors.join("; ")
-					);
-					res.status(400).json(errorResponse);
-					return;
-				}
-				processedArchitectureData = transformationResult.transformed;
-			} else {
-				processedArchitectureData = architectureData as ArchitectureData;
 			}
 
-			// Start async terraform plan execution using existing project
+			// Normalize architecture data for execution
+			const normResult = await ArchitectureNormalizerService.normalizeArchitecture(
+				architectureData,
+				projectName
+			);
+
+			if (normResult.errors.length > 0) {
+				res.status(400).json(ResponseView.error(
+					"Architecture normalization failed",
+					normResult.errors.join("; ")
+				));
+				return;
+			}
+
+			// Start async terraform plan execution
 			const jobId = await TerraformExecutionService.startTerraformPlan(
 				existingProjectPath,
-				processedArchitectureData,
+				architectureData,
 				projectName
 			);
 
-			const response = ResponseView.success(
+			res.json(ResponseView.success(
 				{
 					jobId,
 					status: "started",
@@ -654,47 +482,41 @@ export class TerraformController {
 					pollUrl: `/api/terraform/plan-status/${jobId}`,
 				},
 				"Terraform plan execution started successfully"
-			);
+			));
 
-			res.json(response);
 		} catch (error) {
 			logger.error("Error starting Terraform plan", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.TERRAFORM
+				category: LogCategory.TERRAFORM,
 			});
-			const errorResponse = ResponseView.error(
+
+			res.status(500).json(ResponseView.error(
 				"Failed to start Terraform plan execution",
 				error instanceof Error ? error.message : "Unknown error"
-			);
-			res.status(500).json(errorResponse);
+			));
 		}
 	}
 
 	/**
 	 * Get terraform plan job status (polling endpoint)
 	 */
-	static async getTerraformPlanStatus(
-		req: Request,
-		res: Response
-	): Promise<void> {
+	static async getTerraformPlanStatus(req: Request, res: Response): Promise<void> {
 		try {
 			const { jobId } = req.params;
 
 			if (!jobId) {
-				const errorResponse = ResponseView.error("Job ID is required");
-				res.status(400).json(errorResponse);
+				res.status(400).json(ResponseView.error("Job ID is required"));
 				return;
 			}
 
 			const jobStatus = TerraformExecutionService.getJobStatus(jobId);
 
 			if (!jobStatus) {
-				const errorResponse = ResponseView.error("Job not found");
-				res.status(404).json(errorResponse);
+				res.status(404).json(ResponseView.error("Job not found"));
 				return;
 			}
 
-			const response = ResponseView.success(
+			res.json(ResponseView.success(
 				{
 					jobId: jobStatus.id,
 					status: jobStatus.status,
@@ -704,39 +526,35 @@ export class TerraformController {
 					error: jobStatus.error,
 					createdAt: jobStatus.createdAt,
 					updatedAt: jobStatus.updatedAt,
-					logs: jobStatus.logs || [], // Include streaming logs
-					rawOutput: jobStatus.rawOutput, // Include raw terraform output
+					logs: jobStatus.logs || [],
+					rawOutput: jobStatus.rawOutput,
 				},
 				`Job ${jobStatus.status}`
-			);
+			));
 
-			res.json(response);
 		} catch (error) {
 			logger.error("Error getting plan status", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.TERRAFORM
+				category: LogCategory.TERRAFORM,
 			});
-			const errorResponse = ResponseView.error(
+
+			res.status(500).json(ResponseView.error(
 				"Failed to get plan status",
 				error instanceof Error ? error.message : "Unknown error"
-			);
-			res.status(500).json(errorResponse);
+			));
 		}
 	}
 
 	/**
 	 * Get all terraform plan jobs
 	 */
-	static async getAllTerraformPlanJobs(
-		req: Request,
-		res: Response
-	): Promise<void> {
+	static async getAllTerraformPlanJobs(req: Request, res: Response): Promise<void> {
 		try {
 			const jobs = TerraformExecutionService.getAllJobs();
 
-			const response = ResponseView.success(
+			res.json(ResponseView.success(
 				{
-					jobs: jobs.map((job) => ({
+					jobs: jobs.map(job => ({
 						jobId: job.id,
 						status: job.status,
 						progress: job.progress,
@@ -747,65 +565,51 @@ export class TerraformController {
 					totalJobs: jobs.length,
 				},
 				"Retrieved all terraform plan jobs"
-			);
+			));
 
-			res.json(response);
 		} catch (error) {
 			logger.error("Error getting plan jobs", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.TERRAFORM
+				category: LogCategory.TERRAFORM,
 			});
-			const errorResponse = ResponseView.error(
+
+			res.status(500).json(ResponseView.error(
 				"Failed to get plan jobs",
 				error instanceof Error ? error.message : "Unknown error"
-			);
-			res.status(500).json(errorResponse);
+			));
 		}
 	}
 
 	/**
 	 * Delete completed terraform plan job
 	 */
-	static async deleteTerraformPlanJob(
-		req: Request,
-		res: Response
-	): Promise<void> {
+	static async deleteTerraformPlanJob(req: Request, res: Response): Promise<void> {
 		try {
 			const { jobId } = req.params;
 
 			if (!jobId) {
-				const errorResponse = ResponseView.error("Job ID is required");
-				res.status(400).json(errorResponse);
+				res.status(400).json(ResponseView.error("Job ID is required"));
 				return;
 			}
 
 			const deleted = TerraformExecutionService.deleteJob(jobId);
 
 			if (deleted) {
-				const response = ResponseView.success(
-					{
-						jobId,
-						deleted: true,
-					},
-					"Job deleted successfully"
-				);
-				res.json(response);
+				res.json(ResponseView.success({ jobId, deleted: true }, "Job deleted successfully"));
 			} else {
-				const errorResponse = ResponseView.error(
-					"Job not found or could not be deleted"
-				);
-				res.status(404).json(errorResponse);
+				res.status(404).json(ResponseView.error("Job not found or could not be deleted"));
 			}
+
 		} catch (error) {
 			logger.error("Error deleting plan job", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.TERRAFORM
+				category: LogCategory.TERRAFORM,
 			});
-			const errorResponse = ResponseView.error(
+
+			res.status(500).json(ResponseView.error(
 				"Failed to delete plan job",
 				error instanceof Error ? error.message : "Unknown error"
-			);
-			res.status(500).json(errorResponse);
+			));
 		}
 	}
 
@@ -814,12 +618,9 @@ export class TerraformController {
 	// =====================================
 
 	/**
-	 * Apply Terraform infrastructure with actual terraform execution
+	 * Apply Terraform infrastructure
 	 */
-	static async generateTerraformApply(
-		req: Request,
-		res: Response
-	): Promise<void> {
+	static async generateTerraformApply(req: Request, res: Response): Promise<void> {
 		try {
 			const {
 				architectureData,
@@ -830,96 +631,45 @@ export class TerraformController {
 			} = req.body;
 
 			if (!architectureData) {
-				const errorResponse = ResponseView.error(
-					"Architecture data is required"
-				);
-				res.status(400).json(errorResponse);
+				res.status(400).json(ResponseView.error("Architecture data is required"));
 				return;
 			}
 
 			logger.info(`Starting Terraform apply: ${projectName}`, {
 				category: LogCategory.TERRAFORM,
-				projectName
+				projectName,
 			});
 
-			// Check if project exists and get latest version
+			// Check if project exists
 			const existingProjectPath = await FileService.getProjectPath(projectName);
-			const latestVersionId = await FileService.getLatestProjectVersion(
-				projectName
-			);
+			const latestVersionId = await FileService.getLatestProjectVersion(projectName);
 
 			if (!existingProjectPath || !latestVersionId) {
-				logger.error(`❌ Project '${projectName}' not found`, {
-					category: LogCategory.FILE,
-					component: 'TerraformController',
-					operation: 'executeApply',
-					projectName,
-					requestId: (req as any).id
-				});
-
 				const projects = await FileService.getAvailableProjects();
-				const errorResponse = ResponseView.error(
+				res.status(404).json(ResponseView.error(
 					`Project '${projectName}' not found. Please generate Terraform files first.`,
-					`Available projects: ${projects.map((p) => p.name).join(", ")}`
-				);
-				res.status(404).json(errorResponse);
+					`Available projects: ${projects.map(p => p.name).join(", ")}`
+				));
 				return;
 			}
 
-			logger.info(`📁 Using latest version '${latestVersionId}' at: ${existingProjectPath}`, {
-				category: LogCategory.FILE,
-				component: 'TerraformController',
-				operation: 'executeApply',
-				projectName,
-				versionId: latestVersionId,
-				projectPath: existingProjectPath,
-				requestId: (req as any).id
-			});
-
-			// Validate that the project has necessary Terraform files
-			const hasMainTf = await FileService.projectFileExists(
-				projectName,
-				"main.tf"
-			);
-
+			// Validate project has necessary files
+			const hasMainTf = await FileService.projectFileExists(projectName, "main.tf");
 			if (!hasMainTf) {
-				const errorResponse = ResponseView.error(
+				res.status(400).json(ResponseView.error(
 					`Project '${projectName}' is missing required Terraform files. Please regenerate the project.`
-				);
-				res.status(400).json(errorResponse);
+				));
 				return;
-			}
-
-			// Process architecture data for validation
-			let processedArchitectureData: ArchitectureData;
-
-			if (TerraformController.isFrontendFormat(architectureData)) {
-				// Frontend Format (Aligned snake_case)
-				const transformationResult =
-					FrontendArchitectureTransformerService.transformToBackendFormat(
-						architectureData as any
-					);
-				if (transformationResult.errors.length > 0) {
-					const errorResponse = ResponseView.error(
-						"Frontend architecture transformation failed",
-						transformationResult.errors.join("; ")
-					);
-					res.status(400).json(errorResponse);
-					return;
-				}
-				processedArchitectureData = transformationResult.transformed;
-			} else {
-				processedArchitectureData = architectureData as ArchitectureData;
 			}
 
 			// Start async terraform apply execution
 			const jobId = await TerraformExecutionService.startTerraformApply(
 				existingProjectPath,
-				processedArchitectureData,
+				architectureData,
 				projectName
 			);
 
-			const response = ResponseView.success(
+			res.json(ResponseView.success(
 				{
 					jobId,
 					status: "started",
@@ -930,47 +680,41 @@ export class TerraformController {
 					pollUrl: `/api/terraform/apply-status/${jobId}`,
 				},
 				"Terraform apply execution started successfully"
-			);
+			));
 
-			res.json(response);
 		} catch (error) {
 			logger.error("Error starting Terraform apply", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.TERRAFORM
+				category: LogCategory.TERRAFORM,
 			});
-			const errorResponse = ResponseView.error(
+
+			res.status(500).json(ResponseView.error(
 				"Failed to start Terraform apply execution",
 				error instanceof Error ? error.message : "Unknown error"
-			);
-			res.status(500).json(errorResponse);
+			));
 		}
 	}
 
 	/**
-	 * Get terraform apply job status (polling endpoint)
+	 * Get terraform apply job status
 	 */
-	static async getTerraformApplyStatus(
-		req: Request,
-		res: Response
-	): Promise<void> {
+	static async getTerraformApplyStatus(req: Request, res: Response): Promise<void> {
 		try {
 			const { jobId } = req.params;
 
 			if (!jobId) {
-				const errorResponse = ResponseView.error("Job ID is required");
-				res.status(400).json(errorResponse);
+				res.status(400).json(ResponseView.error("Job ID is required"));
 				return;
 			}
 
 			const jobStatus = TerraformExecutionService.getJobStatus(jobId);
 
 			if (!jobStatus) {
-				const errorResponse = ResponseView.error("Job not found");
-				res.status(404).json(errorResponse);
+				res.status(404).json(ResponseView.error("Job not found"));
 				return;
 			}
 
-			const response = ResponseView.success(
+			res.json(ResponseView.success(
 				{
 					jobId: jobStatus.id,
 					status: jobStatus.status,
@@ -984,19 +728,18 @@ export class TerraformController {
 					rawOutput: jobStatus.rawOutput,
 				},
 				`Job ${jobStatus.status}`
-			);
+			));
 
-			res.json(response);
 		} catch (error) {
 			logger.error("Error getting apply status", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.TERRAFORM
+				category: LogCategory.TERRAFORM,
 			});
-			const errorResponse = ResponseView.error(
+
+			res.status(500).json(ResponseView.error(
 				"Failed to get apply status",
 				error instanceof Error ? error.message : "Unknown error"
-			);
-			res.status(500).json(errorResponse);
+			));
 		}
 	}
 
@@ -1005,12 +748,9 @@ export class TerraformController {
 	// =====================================
 
 	/**
-	 * Destroy Terraform infrastructure with actual terraform execution
+	 * Destroy Terraform infrastructure
 	 */
-	static async generateTerraformDestroy(
-		req: Request,
-		res: Response
-	): Promise<void> {
+	static async generateTerraformDestroy(req: Request, res: Response): Promise<void> {
 		try {
 			const {
 				projectName = "infrastructure",
@@ -1021,63 +761,36 @@ export class TerraformController {
 			} = req.body;
 
 			if (!confirmDestroy) {
-				const errorResponse = ResponseView.error(
+				res.status(400).json(ResponseView.error(
 					"Destroy confirmation is required. Set 'confirmDestroy: true' to proceed."
-				);
-				res.status(400).json(errorResponse);
+				));
 				return;
 			}
 
 			logger.info(`Starting Terraform destroy: ${projectName}`, {
 				category: LogCategory.TERRAFORM,
-				projectName
+				projectName,
 			});
 
-			// Check if project exists and get latest version
+			// Check if project exists
 			const existingProjectPath = await FileService.getProjectPath(projectName);
-			const latestVersionId = await FileService.getLatestProjectVersion(
-				projectName
-			);
+			const latestVersionId = await FileService.getLatestProjectVersion(projectName);
 
 			if (!existingProjectPath || !latestVersionId) {
-				logger.error(`❌ Project '${projectName}' not found`, {
-					category: LogCategory.FILE,
-					component: 'TerraformController',
-					operation: 'executeDestroy',
-					projectName,
-					requestId: (req as any).id
-				});
-
 				const projects = await FileService.getAvailableProjects();
-				const errorResponse = ResponseView.error(
+				res.status(404).json(ResponseView.error(
 					`Project '${projectName}' not found.`,
-					`Available projects: ${projects.map((p) => p.name).join(", ")}`
-				);
-				res.status(404).json(errorResponse);
+					`Available projects: ${projects.map(p => p.name).join(", ")}`
+				));
 				return;
 			}
 
-			logger.info(`📁 Using latest version '${latestVersionId}' at: ${existingProjectPath}`, {
-				category: LogCategory.FILE,
-				component: 'TerraformController',
-				operation: 'executeDestroy',
-				projectName,
-				versionId: latestVersionId,
-				projectPath: existingProjectPath,
-				requestId: (req as any).id
-			});
-
-			// Validate that the project has necessary Terraform files
-			const hasMainTf = await FileService.projectFileExists(
-				projectName,
-				"main.tf"
-			);
-
+			// Validate project has necessary files
+			const hasMainTf = await FileService.projectFileExists(projectName, "main.tf");
 			if (!hasMainTf) {
-				const errorResponse = ResponseView.error(
+				res.status(400).json(ResponseView.error(
 					`Project '${projectName}' is missing required Terraform files.`
-				);
-				res.status(400).json(errorResponse);
+				));
 				return;
 			}
 
@@ -1087,7 +800,7 @@ export class TerraformController {
 				projectName
 			);
 
-			const response = ResponseView.success(
+			res.json(ResponseView.success(
 				{
 					jobId,
 					status: "started",
@@ -1098,47 +811,41 @@ export class TerraformController {
 					pollUrl: `/api/terraform/destroy-status/${jobId}`,
 				},
 				"Terraform destroy execution started successfully"
-			);
+			));
 
-			res.json(response);
 		} catch (error) {
 			logger.error("Error starting Terraform destroy", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.TERRAFORM
+				category: LogCategory.TERRAFORM,
 			});
-			const errorResponse = ResponseView.error(
+
+			res.status(500).json(ResponseView.error(
 				"Failed to start Terraform destroy execution",
 				error instanceof Error ? error.message : "Unknown error"
-			);
-			res.status(500).json(errorResponse);
+			));
 		}
 	}
 
 	/**
-	 * Get terraform destroy job status (polling endpoint)
+	 * Get terraform destroy job status
 	 */
-	static async getTerraformDestroyStatus(
-		req: Request,
-		res: Response
-	): Promise<void> {
+	static async getTerraformDestroyStatus(req: Request, res: Response): Promise<void> {
 		try {
 			const { jobId } = req.params;
 
 			if (!jobId) {
-				const errorResponse = ResponseView.error("Job ID is required");
-				res.status(400).json(errorResponse);
+				res.status(400).json(ResponseView.error("Job ID is required"));
 				return;
 			}
 
 			const jobStatus = TerraformExecutionService.getJobStatus(jobId);
 
 			if (!jobStatus) {
-				const errorResponse = ResponseView.error("Job not found");
-				res.status(404).json(errorResponse);
+				res.status(404).json(ResponseView.error("Job not found"));
 				return;
 			}
 
-			const response = ResponseView.success(
+			res.json(ResponseView.success(
 				{
 					jobId: jobStatus.id,
 					status: jobStatus.status,
@@ -1152,58 +859,59 @@ export class TerraformController {
 					rawOutput: jobStatus.rawOutput,
 				},
 				`Job ${jobStatus.status}`
-			);
+			));
 
-			res.json(response);
 		} catch (error) {
 			logger.error("Error getting destroy status", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.TERRAFORM
+				category: LogCategory.TERRAFORM,
 			});
-			const errorResponse = ResponseView.error(
+
+			res.status(500).json(ResponseView.error(
 				"Failed to get destroy status",
 				error instanceof Error ? error.message : "Unknown error"
-			);
-			res.status(500).json(errorResponse);
+			));
 		}
 	}
+
+	// =====================================
+	// MODULE REGISTRY ENDPOINTS
+	// =====================================
 
 	/**
 	 * Refresh module registry
 	 */
-	static async refreshModuleRegistry(
-		req: Request,
-		res: Response
-	): Promise<void> {
+	static async refreshModuleRegistry(req: Request, res: Response): Promise<void> {
 		try {
-			logger.info("Refreshing module registry", {
-				category: LogCategory.MODULE
-			});
+			logger.info("Refreshing module registry", { category: LogCategory.MODULE });
 
 			await ModuleRegistryService.refresh();
 			const modules = await ModuleRegistryService.getAvailableModules();
 
-			const response = ResponseView.success(
+			res.json(ResponseView.success(
 				{
 					modulesLoaded: modules.length,
-					categories: [...new Set(modules.map((m) => m.category))],
+					categories: [...new Set(modules.map(m => m.category))],
 				},
 				"Module registry refreshed successfully"
-			);
+			));
 
-			res.json(response);
 		} catch (error) {
 			logger.error("Error refreshing module registry", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.MODULE
+				category: LogCategory.MODULE,
 			});
-			const errorResponse = ResponseView.error(
+
+			res.status(500).json(ResponseView.error(
 				"Failed to refresh module registry",
 				error instanceof Error ? error.message : "Unknown error"
-			);
-			res.status(500).json(errorResponse);
+			));
 		}
 	}
+
+	// =====================================
+	// FILE MANAGEMENT ENDPOINTS
+	// =====================================
 
 	/**
 	 * Get list of generated Terraform files
@@ -1211,71 +919,63 @@ export class TerraformController {
 	static async getTerraformFiles(req: Request, res: Response): Promise<void> {
 		try {
 			const files = await FileService.getTerraformFiles();
-			const response = ResponseView.terraformFilesList(files);
-			res.json(response);
+			res.json(ResponseView.terraformFilesList(files));
 		} catch (error) {
 			logger.error("Error listing terraform files", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.FILE
+				category: LogCategory.FILE,
 			});
-			const errorResponse = ResponseView.error(
-				"Failed to list terraform files"
-			);
-			res.status(500).json(errorResponse);
+			res.status(500).json(ResponseView.error("Failed to list terraform files"));
 		}
 	}
 
 	/**
 	 * Get content of a specific Terraform file
 	 */
-	static async getTerraformFileContent(
-		req: Request,
-		res: Response
-	): Promise<void> {
+	static async getTerraformFileContent(req: Request, res: Response): Promise<void> {
 		try {
 			const { filename } = req.params;
 			const { projectId } = req.query as { projectId?: string };
-			const content = await FileService.getTerraformFileContent(
-				filename,
-				projectId
-			);
 
-			if (!content) {
-				const errorResponse = ResponseView.error("Terraform file not found");
-				res.status(404).json(errorResponse);
+			if (!projectId) {
+				res.status(400).json(ResponseView.error("Project ID is required"));
 				return;
 			}
 
-			const response = ResponseView.terraformFileContent(filename, content);
-			res.json(response);
+			const content = await FileService.getTerraformFileContent(filename, projectId);
+
+			if (!content) {
+				res.status(404).json(ResponseView.error("Terraform file not found"));
+				return;
+			}
+
+			res.json(ResponseView.terraformFileContent(filename, content));
 		} catch (error) {
 			logger.error("Error reading terraform file", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.FILE
+				category: LogCategory.FILE,
 			});
-			const errorResponse = ResponseView.error("Failed to read terraform file");
-			res.status(500).json(errorResponse);
+			res.status(500).json(ResponseView.error("Failed to read terraform file"));
 		}
 	}
 
 	/**
 	 * Download Terraform file as attachment
 	 */
-	static async downloadTerraformFile(
-		req: Request,
-		res: Response
-	): Promise<void> {
+	static async downloadTerraformFile(req: Request, res: Response): Promise<void> {
 		try {
 			const { filename } = req.params;
 			const { projectId } = req.query as { projectId?: string };
-			const filePath = await FileService.getTerraformFilePath(
-				filename,
-				projectId
-			);
+
+			if (!projectId) {
+				res.status(400).json(ResponseView.error("Project ID is required"));
+				return;
+			}
+
+			const filePath = await FileService.getTerraformFilePath(filename, projectId);
 
 			if (!filePath) {
-				const errorResponse = ResponseView.error("Terraform file not found");
-				res.status(404).json(errorResponse);
+				res.status(404).json(ResponseView.error("Terraform file not found"));
 				return;
 			}
 
@@ -1283,12 +983,9 @@ export class TerraformController {
 		} catch (error) {
 			logger.error("Error downloading terraform file", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.FILE
+				category: LogCategory.FILE,
 			});
-			const errorResponse = ResponseView.error(
-				"Failed to download terraform file"
-			);
-			res.status(500).json(errorResponse);
+			res.status(500).json(ResponseView.error("Failed to download terraform file"));
 		}
 	}
 
@@ -1301,31 +998,20 @@ export class TerraformController {
 			const zipBuffer = await FileService.createProjectZip(projectName);
 
 			if (!zipBuffer) {
-				const errorResponse = ResponseView.error(
-					"Project not found or no files available"
-				);
-				res.status(404).json(errorResponse);
+				res.status(404).json(ResponseView.error("Project not found or no files available"));
 				return;
 			}
 
-			// Set appropriate headers for ZIP file download
 			res.setHeader("Content-Type", "application/zip");
-			res.setHeader(
-				"Content-Disposition",
-				`attachment; filename="${projectName}-terraform.zip"`
-			);
+			res.setHeader("Content-Disposition", `attachment; filename="${projectName}-terraform.zip"`);
 			res.setHeader("Content-Length", zipBuffer.length);
-
 			res.send(zipBuffer);
 		} catch (error) {
 			logger.error("Error creating project ZIP", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.FILE
+				category: LogCategory.FILE,
 			});
-			const errorResponse = ResponseView.error(
-				"Failed to create project ZIP file"
-			);
-			res.status(500).json(errorResponse);
+			res.status(500).json(ResponseView.error("Failed to create project ZIP file"));
 		}
 	}
 
@@ -1335,15 +1021,13 @@ export class TerraformController {
 	static async getProjects(req: Request, res: Response): Promise<void> {
 		try {
 			const projects = await FileService.getAvailableProjects();
-			const response = ResponseView.projectsList(projects);
-			res.json(response);
+			res.json(ResponseView.projectsList(projects));
 		} catch (error) {
 			logger.error("Error listing projects", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.FILE
+				category: LogCategory.FILE,
 			});
-			const errorResponse = ResponseView.error("Failed to list projects");
-			res.status(500).json(errorResponse);
+			res.status(500).json(ResponseView.error("Failed to list projects"));
 		}
 	}
 
@@ -1356,124 +1040,18 @@ export class TerraformController {
 			const files = await FileService.getProjectFiles(projectName);
 
 			if (files.length === 0) {
-				const errorResponse = ResponseView.error(
-					"Project not found or no files available"
-				);
-				res.status(404).json(errorResponse);
+				res.status(404).json(ResponseView.error("Project not found or no files available"));
 				return;
 			}
 
-			const response = ResponseView.terraformFilesList(files);
-			res.json(response);
+			res.json(ResponseView.terraformFilesList(files));
 		} catch (error) {
 			logger.error("Error listing project files", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.FILE
+				category: LogCategory.FILE,
 			});
-			const errorResponse = ResponseView.error("Failed to list project files");
-			res.status(500).json(errorResponse);
+			res.status(500).json(ResponseView.error("Failed to list project files"));
 		}
-	}
-
-	/**
-	 * Build dependency visualization data
-	 */
-	private static buildDependencyVisualization(
-		nodes: any[],
-		dependencies: any[]
-	): any {
-		const dependencyMap = new Map(dependencies.map((d) => [d.moduleId, d]));
-
-		return {
-			nodes: nodes.map((node) => ({
-				id: node.id,
-				name: node.name,
-				type: node.resourceType,
-				module: node.terraformModule,
-				level: dependencyMap.get(node.id)?.level || 0,
-			})),
-			edges: dependencies.flatMap((dep) =>
-				dep.dependsOn.map((source: string) => ({
-					source,
-					target: dep.moduleId,
-					type: "dependency",
-				}))
-			),
-		};
-	}
-
-	/**
-	 * Generate resource summary for plan preview
-	 */
-	private static generateResourceSummary(modules: any[]): any {
-		const summary = {
-			totalResources: 0,
-			resourceTypes: {} as Record<string, number>,
-			modules: modules.length,
-		};
-
-		for (const module of modules) {
-			summary.totalResources++;
-			const category = module.source.split("/")[2]; // Extract category from path
-			summary.resourceTypes[category] =
-				(summary.resourceTypes[category] || 0) + 1;
-		}
-
-		return summary;
-	}
-
-	/**
-	 * Generate basic cost estimate
-	 */
-	private static generateCostEstimate(modules: any[]): any {
-		// Basic cost estimation - in production, integrate with AWS Pricing API
-		const baseCosts: Record<string, number> = {
-			vpc: 0,
-			subnet: 0,
-			ec2: 15, // t3.micro monthly
-			"security-group": 0,
-			s3: 5, // estimated monthly
-			rds: 25, // db.t3.micro monthly
-		};
-
-		let totalEstimate = 0;
-		const breakdown: Record<string, number> = {};
-
-		for (const module of modules) {
-			const moduleName = module.source.split("/").pop();
-			const cost = baseCosts[moduleName] || 0;
-			totalEstimate += cost;
-			breakdown[moduleName] = (breakdown[moduleName] || 0) + cost;
-		}
-
-		return {
-			monthlyEstimate: totalEstimate,
-			breakdown,
-			currency: "USD",
-			disclaimer:
-				"This is a rough estimate. Actual costs may vary based on usage and AWS pricing changes.",
-		};
-	}
-
-	/**
-	 * Detect if the architecture data is in frontend format
-	 */
-	// TODO: Improve detection logic by declaring the type for data for the frontend format
-	private static isFrontendFormat(data: any): boolean {
-		// Check for frontend format structure
-		return !!(
-			data.metadata &&
-			data.resources &&
-			Array.isArray(data.resources) &&
-			data.resources.length > 0 &&
-			data.resources.some(
-				(resource: any) =>
-				// Check for new snake_case format
-				(resource.node_type &&
-					(resource.node_type === "aws_service" ||
-						resource.node_type === "aws_container"))
-			)
-		);
 	}
 
 	/**
@@ -1485,28 +1063,20 @@ export class TerraformController {
 			const structure = await FileService.getProjectStructure(projectName);
 
 			if (!structure) {
-				const errorResponse = ResponseView.error("Project not found");
-				res.status(404).json(errorResponse);
+				res.status(404).json(ResponseView.error("Project not found"));
 				return;
 			}
 
-			const response = ResponseView.success(
-				{
-					projectName,
-					structure,
-				},
+			res.json(ResponseView.success(
+				{ projectName, structure },
 				"Project structure retrieved successfully"
-			);
-			res.json(response);
+			));
 		} catch (error) {
 			logger.error("Error getting project structure", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.FILE
+				category: LogCategory.FILE,
 			});
-			const errorResponse = ResponseView.error(
-				"Failed to get project structure"
-			);
-			res.status(500).json(errorResponse);
+			res.status(500).json(ResponseView.error("Failed to get project structure"));
 		}
 	}
 
@@ -1519,28 +1089,47 @@ export class TerraformController {
 			const deleted = await FileService.deleteProject(projectName);
 
 			if (!deleted) {
-				const errorResponse = ResponseView.error(
-					"Project not found or could not be deleted"
-				);
-				res.status(404).json(errorResponse);
+				res.status(404).json(ResponseView.error("Project not found or could not be deleted"));
 				return;
 			}
 
-			const response = ResponseView.success(
-				{
-					projectName,
-					deleted: true,
-				},
+			res.json(ResponseView.success(
+				{ projectName, deleted: true },
 				"Project deleted successfully"
-			);
-			res.json(response);
+			));
 		} catch (error) {
 			logger.error("Error deleting project", {
 				error: error instanceof Error ? error.message : String(error),
-				category: LogCategory.FILE
+				category: LogCategory.FILE,
 			});
-			const errorResponse = ResponseView.error("Failed to delete project");
-			res.status(500).json(errorResponse);
+			res.status(500).json(ResponseView.error("Failed to delete project"));
 		}
+	}
+
+	// =====================================
+	// PRIVATE HELPER METHODS
+	// =====================================
+
+	/**
+	 * Build dependency visualization data from normalized architecture
+	 */
+	private static buildDependencyVisualization(architecture: any): any {
+		return {
+			nodes: architecture.resources.map((resource: any) => ({
+				id: resource.id,
+				name: resource.name,
+				type: resource.resourceType,
+				module: resource.terraformModule,
+				moduleName: resource.moduleName,
+			})),
+			edges: architecture.resources.flatMap((resource: any) =>
+				resource.dependencies.map((depId: string) => ({
+					source: depId,
+					target: resource.id,
+					type: "dependency",
+				}))
+			),
+			order: architecture.dependencyOrder,
+		};
 	}
 }

@@ -10,10 +10,8 @@ export * from './controllers/TerraformController.js';
 export * from './services/FileService.js';
 export * from './services/CLIService.js';
 export * from './services/ModuleRegistryService.js';
-export * from './services/ArchitectureParserService.js';
-export * from './services/ModuleMapperService.js';
-export { ModularTerraformGeneratorService } from './services/ModularTerraformGeneratorService.js';
-export type { TerraformGenerationResult } from './services/ModularTerraformGeneratorService.js';
+export * from './services/ArchitectureNormalizerService.js';
+export * from './services/SimplifiedTerraformGeneratorService.js';
 
 // Views
 export * from './views/ResponseView.js';

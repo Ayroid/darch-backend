@@ -37,9 +37,10 @@ resource "aws_route_table_association" "this" {
 }
 
 # Local values to control route creation
+# Only create routes if the gateway ID is actually provided (not null or empty)
 locals {
-  create_igw_route = var.subnet_type == "public" && var.create_route_table && var.create_igw_route
-  create_nat_route = var.subnet_type == "private" && var.create_route_table && var.create_nat_route
+  create_igw_route = var.subnet_type == "public" && var.create_route_table && var.create_igw_route && var.internet_gateway_id != null && var.internet_gateway_id != ""
+  create_nat_route = var.subnet_type == "private" && var.create_route_table && var.create_nat_route && var.nat_gateway_id != null && var.nat_gateway_id != ""
 }
 
 # Route to internet gateway for public subnets

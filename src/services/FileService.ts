@@ -3,7 +3,7 @@ import path from 'path';
 import { logger, LogCategory, LogLevel } from '../utils/Logger.js';
 import archiver from "archiver";
 import { TerraformFile } from "../models/Architecture.js";
-import { TerraformGenerationResult } from "./ModularTerraformGeneratorService.js";
+import { TerraformGenerationResult } from "./SimplifiedTerraformGeneratorService.js";
 import { LocalFileManager } from "./LocalFileManager.js";
 
 export class FileService {
@@ -21,12 +21,11 @@ export class FileService {
 	}
 
 	/**
-	 * Get list of generated Terraform files (Legacy compatibility)
+	 * Get list of generated Terraform files from all projects
 	 */
 	static async getTerraformFiles(): Promise<TerraformFile[]> {
 		await this.ensureInitialized();
 
-		// Get all files from all projects for backward compatibility
 		const projects = this.fileManager.getUserProjects();
 		const allFiles: TerraformFile[] = [];
 
@@ -42,65 +41,29 @@ export class FileService {
 	}
 
 	/**
-	 * Get content of a specific Terraform file (Legacy compatibility)
+	 * Get content of a specific Terraform file from a project
 	 */
 	static async getTerraformFileContent(
 		filename: string,
-		projectId?: string
+		projectId: string
 	): Promise<string | null> {
 		await this.ensureInitialized();
-
-		if (projectId) {
-			// Get file from specific project
-			return this.fileManager.getFileContent(projectId, filename);
-		}
-
-		// Legacy behavior: search in all projects
-		const projects = this.fileManager.getUserProjects();
-		for (const project of projects) {
-			const content = this.fileManager.getFileContent(
-				project.projectId,
-				filename
-			);
-			if (content) {
-				return content;
-			}
-		}
-
-		return null;
+		return this.fileManager.getFileContent(projectId, filename);
 	}
 
 	/**
-	 * Get file path for download (Legacy compatibility)
+	 * Get file path for download
 	 */
 	static async getTerraformFilePath(
 		filename: string,
-		projectId?: string
+		projectId: string
 	): Promise<string | null> {
 		await this.ensureInitialized();
-
-		if (projectId) {
-			// Get file from specific project
-			return this.fileManager.getFilePath(projectId, filename);
-		}
-
-		// Legacy behavior: search in all projects
-		const projects = this.fileManager.getUserProjects();
-		for (const project of projects) {
-			const filePath = this.fileManager.getFilePath(
-				project.projectId,
-				filename
-			);
-			if (filePath) {
-				return filePath;
-			}
-		}
-
-		return null;
+		return this.fileManager.getFilePath(projectId, filename);
 	}
 
 	/**
-	 * Save generated Terraform files from modular generation
+	 * Save generated Terraform files
 	 */
 	static async saveGeneratedTerraformFiles(
 		terraformResult: TerraformGenerationResult,
@@ -108,38 +71,29 @@ export class FileService {
 	): Promise<{ projectDir: string; files: string[] }> {
 		await this.ensureInitialized();
 
-		// Create versioned project name
-		const versionedProjectId = await this.getNextVersionedProjectName(
-			projectName
-		);
-
-		// Convert TerraformGenerationResult files to Record<string, string>
+		const versionedProjectId = await this.getNextVersionedProjectName(projectName);
 		const terraformFiles: Record<string, string> = {};
 
-		logger.file(LogLevel.INFO, '💾 Saving generated Terraform files', {
+		logger.file(LogLevel.INFO, 'Saving generated Terraform files', {
 			projectName,
 			versionedProjectId,
 			fileCount: terraformResult.files.length,
-			component: 'FileService',
-			operation: 'saveTerraformFiles'
 		});
+
 		for (const file of terraformResult.files) {
 			terraformFiles[file.filename] = file.content;
 		}
 
-		// Create project using LocalFileManager
 		const projectInfo = await this.fileManager.createUserProject(
 			versionedProjectId,
 			terraformFiles
 		);
 
-		logger.file(LogLevel.INFO, '✅ Terraform files saved successfully', {
+		logger.file(LogLevel.INFO, 'Terraform files saved successfully', {
 			projectName,
 			versionedProjectId,
 			fileCount: terraformResult.files.length,
 			projectPath: projectInfo.projectPath,
-			filenames: terraformResult.files.map((f) => f.filename),
-			component: 'FileService'
 		});
 
 		return {
@@ -184,17 +138,13 @@ export class FileService {
 	static async createProjectZip(projectName: string): Promise<Buffer | null> {
 		await this.ensureInitialized();
 
-		const projectStructure =
-			this.fileManager.getWorkspaceStructure(projectName);
+		const projectStructure = this.fileManager.getWorkspaceStructure(projectName);
 
 		if (!projectStructure || projectStructure.generatedFiles.length === 0) {
 			return null;
 		}
 
-		const projectPath = this.fileManager.getUserProjectPath(
-			"sudo",
-			projectName
-		);
+		const projectPath = this.fileManager.getUserProjectPath("sudo", projectName);
 
 		return new Promise((resolve, reject) => {
 			const chunks: Buffer[] = [];
@@ -204,7 +154,6 @@ export class FileService {
 			archive.on("end", () => resolve(Buffer.concat(chunks)));
 			archive.on("error", reject);
 
-			// Add all .tf files from the project root directory
 			projectStructure.generatedFiles.forEach((file) => {
 				const filePath = path.join(projectPath, file);
 				archive.file(filePath, { name: file });
@@ -215,11 +164,10 @@ export class FileService {
 	}
 
 	/**
-	 * Get project files (for listing files in a specific project)
+	 * Get project files
 	 */
 	static async getProjectFiles(projectName: string): Promise<TerraformFile[]> {
 		await this.ensureInitialized();
-
 		return this.fileManager.getProjectFiles(projectName);
 	}
 
@@ -228,7 +176,6 @@ export class FileService {
 	 */
 	static async getProjectStructure(projectName: string) {
 		await this.ensureInitialized();
-
 		return this.fileManager.getWorkspaceStructure(projectName);
 	}
 
@@ -237,7 +184,6 @@ export class FileService {
 	 */
 	static async deleteProject(projectName: string): Promise<boolean> {
 		await this.ensureInitialized();
-
 		return this.fileManager.deleteProject(projectName);
 	}
 
@@ -250,10 +196,10 @@ export class FileService {
 
 			const projects = this.fileManager.getUserProjects();
 
-			// First try exact match
+			// Try exact match first
 			let project = projects.find((p) => p.projectId === projectName);
 
-			// If no exact match, try to find the latest version of the project
+			// If no exact match, try to find the latest version
 			if (!project) {
 				const latestVersionId = await this.getLatestProjectVersion(projectName);
 				if (latestVersionId) {
@@ -261,15 +207,7 @@ export class FileService {
 				}
 			}
 
-			// If still no match using versioned approach, try legacy timestamp-based matching
-			if (!project) {
-				project = projects.find((p) =>
-					p.projectId.startsWith(projectName + "-")
-				);
-			}
-
 			if (project) {
-				// Check if project directory still exists
 				const projectExists = await fs.promises
 					.access(project.projectPath)
 					.then(() => true)
@@ -281,15 +219,14 @@ export class FileService {
 		} catch (error) {
 			logger.error('Error checking project path', {
 				error: error instanceof Error ? error.message : String(error),
-				stack: error instanceof Error ? error.stack : undefined,
 				category: LogCategory.FILE,
-				component: 'FileService'
 			});
 			return null;
 		}
 	}
+
 	/**
-	 * Check if a specific file exists in a project (uses latest version if base name provided)
+	 * Check if a specific file exists in a project
 	 */
 	static async projectFileExists(
 		projectName: string,
@@ -306,7 +243,7 @@ export class FileService {
 			const filePath = path.join(projectPath, filename);
 			await fs.promises.access(filePath);
 			return true;
-		} catch (error) {
+		} catch {
 			return false;
 		}
 	}
@@ -319,11 +256,9 @@ export class FileService {
 	}
 
 	/**
-	 * Get the next versioned project name (e.g., project1-version1, project1-version2)
+	 * Get the next versioned project name
 	 */
-	static async getNextVersionedProjectName(
-		baseProjectName: string
-	): Promise<string> {
+	static async getNextVersionedProjectName(baseProjectName: string): Promise<string> {
 		await this.ensureInitialized();
 
 		const projects = this.fileManager.getUserProjects();
@@ -336,17 +271,14 @@ export class FileService {
 			})
 			.filter((version) => !isNaN(version));
 
-		const nextVersion =
-			projectVersions.length > 0 ? Math.max(...projectVersions) + 1 : 1;
+		const nextVersion = projectVersions.length > 0 ? Math.max(...projectVersions) + 1 : 1;
 		return `${baseProjectName}-version${nextVersion}`;
 	}
 
 	/**
-	 * Get the latest version of a project (highest version number)
+	 * Get the latest version of a project
 	 */
-	static async getLatestProjectVersion(
-		baseProjectName: string
-	): Promise<string | null> {
+	static async getLatestProjectVersion(baseProjectName: string): Promise<string | null> {
 		await this.ensureInitialized();
 
 		const projects = this.fileManager.getUserProjects();
@@ -386,7 +318,7 @@ export class FileService {
 		await this.ensureInitialized();
 
 		const projects = this.fileManager.getUserProjects();
-		const projectVersions = projects
+		return projects
 			.filter((p) => p.projectId.startsWith(`${baseProjectName}-version`))
 			.map((p) => {
 				const versionMatch = p.projectId.match(/-version(\d+)$/);
@@ -399,81 +331,6 @@ export class FileService {
 				};
 			})
 			.filter((p) => !isNaN(p.version))
-			.sort((a, b) => b.version - a.version); // Sort by version descending (latest first)
-
-		return projectVersions;
-	}
-
-	/**
-	 * Migrate existing timestamp-based projects to versioned naming
-	 * This is a utility method to clean up old projects
-	 */
-	static async migrateTimestampProjectsToVersioned(): Promise<void> {
-		await this.ensureInitialized();
-
-		const projects = this.fileManager.getUserProjects();
-
-		// Group projects by base name (extract base name from timestamp projects)
-		const baseProjectGroups = new Map<
-			string,
-			Array<{ projectId: string; projectPath: string; createdAt: string }>
-		>();
-
-		for (const project of projects) {
-			const projectId = project.projectId;
-
-			// Check if it's a timestamp-based project (contains ISO date format)
-			if (projectId.match(/-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/)) {
-				const baseNameMatch = projectId.match(
-					/^(.+)-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/
-				);
-				if (baseNameMatch) {
-					const baseName = baseNameMatch[1];
-					if (!baseProjectGroups.has(baseName)) {
-						baseProjectGroups.set(baseName, []);
-					}
-					baseProjectGroups.get(baseName)!.push({
-						projectId: project.projectId,
-						projectPath: project.projectPath,
-						createdAt: project.createdAt,
-					});
-				}
-			}
-		}
-
-		logger.file(LogLevel.INFO, '🔄 Found project groups to migrate', {
-			projectGroupsCount: baseProjectGroups.size,
-			component: 'FileService',
-			operation: 'migrateTimestampProjectsToVersioned'
-		});
-
-		// For each base project, create versioned projects
-		for (const [baseName, timestampProjects] of baseProjectGroups) {
-			// Sort by creation date (oldest first)
-			timestampProjects.sort(
-				(a, b) =>
-					new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-			);
-
-			logger.file(LogLevel.INFO, '📦 Migrating project versions', {
-				baseName,
-				versionsCount: timestampProjects.length,
-				component: 'FileService'
-			});
-
-			// Note: This is a read-only migration that shows what would happen
-			// In a real implementation, you'd need to rename directories and update the LocalFileManager
-			timestampProjects.forEach((project, index) => {
-				const newVersionedName = `${baseName}-version${index + 1}`;
-
-				logger.file(LogLevel.DEBUG, 'Project migration mapping', {
-					oldName: project.projectId,
-					newName: newVersionedName,
-					baseName,
-					version: index + 1,
-					component: 'FileService'
-				});
-			});
-		}
+			.sort((a, b) => b.version - a.version);
 	}
 }

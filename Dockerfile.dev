@@ -1,15 +1,13 @@
 # Development Dockerfile for hot reloading
-FROM node:18-alpine
+FROM oven/bun:latest
 
 # Install development dependencies
-RUN apk add --no-cache \
-    python3 \
-    make \
-    g++ \
+RUN apt-get update && apt-get install -y \
     wget \
     unzip \
     curl \
-    bash
+    bash \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install Terraform
 ARG TERRAFORM_VERSION=1.6.6
@@ -22,12 +20,11 @@ RUN wget https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY package.json bun.lockb* ./
 COPY tsconfig.json ./
-COPY nodemon.json ./
 
 # Install all dependencies (including dev dependencies)
-RUN npm install
+RUN bun install
 
 # Create required directories
 RUN mkdir -p src/output
@@ -36,4 +33,4 @@ RUN mkdir -p src/output
 EXPOSE 5000
 
 # Default command for development with hot reload
-CMD ["npm", "run", "dev"]
+CMD ["bun", "--watch", "src/index.ts"]

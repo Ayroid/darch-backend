@@ -1,15 +1,13 @@
 # Production Dockerfile for Darch Backend
-FROM node:18-alpine AS builder
+FROM oven/bun:latest AS builder
 
 # Install build dependencies
-RUN apk add --no-cache \
-    python3 \
-    make \
-    g++ \
+RUN apt-get update && apt-get install -y \
     wget \
     unzip \
     curl \
-    bash
+    bash \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install Terraform
 ARG TERRAFORM_VERSION=1.6.6
@@ -23,29 +21,27 @@ RUN wget https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY package.json bun.lockb* ./
 COPY tsconfig.json ./
 
 # Install dependencies
-RUN npm ci && npm cache clean --force
+RUN bun install --frozen-lockfile
 
 # Copy source code
 COPY src/ ./src/
 COPY terraform-modules/ ./terraform-modules/
 
-# Build TypeScript
-RUN npm run build
-
 # Production stage
-FROM node:18-alpine AS production
+FROM oven/bun:latest AS production
 
 # Install runtime dependencies
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y \
     wget \
     unzip \
     curl \
     bash \
-    dumb-init
+    dumb-init \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install Terraform
 ARG TERRAFORM_VERSION=1.6.6
@@ -55,24 +51,25 @@ RUN wget https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform
     rm terraform_${TERRAFORM_VERSION}_linux_amd64.zip
 
 # Create non-root user for security
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S darch -u 1001
+RUN groupadd -g 1001 bunjs && \
+    useradd -m -u 1001 -g bunjs darch
 
 # Set working directory
 WORKDIR /app
 
-# Copy built application from builder stage
-COPY --from=builder /app/dist ./dist
+# Copy application from builder stage
+COPY --from=builder /app/src ./src
 COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/tsconfig.json ./
 COPY --from=builder /app/terraform-modules ./terraform-modules
 
 # Create required directories
 RUN mkdir -p src/output && \
-    chown -R darch:nodejs /app
+    chown -R darch:bunjs /app
 
 # Copy health check script
-COPY --chown=darch:nodejs docker-healthcheck.sh ./
+COPY --chown=darch:bunjs docker-healthcheck.sh ./
 RUN chmod +x docker-healthcheck.sh
 
 # Switch to non-root user
@@ -89,4 +86,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 ENTRYPOINT ["dumb-init", "--"]
 
 # Default command - start the API server
-CMD ["node", "dist/index.js"]
+CMD ["bun", "run", "src/index.ts"]
